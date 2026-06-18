@@ -18,6 +18,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 
+import com.zaraki.exams.SeedData;
+import com.zaraki.exams.auth.UserManagementForm;
 import java.sql.*;
 import java.util.List;
 
@@ -30,18 +32,23 @@ public class DashboardForm {
     private final StackPane contentArea;
     private final Stage stage;
     private final ComboBox<String> curriculumSwitcher;
+    private final String loggedInUser;
+    private final Runnable onLogout;
 
     private StudentForm studentForm;
     private SubjectForm subjectForm;
     private ExamForm examForm;
     private GradingScaleForm gradingScaleForm;
+    private UserManagementForm userManagementForm;
     private MarksEntryForm marksEntryForm;
     private BulkMarksForm bulkMarksForm;
     private AnalysisForm analysisForm;
     private ReportForm reportForm;
 
-    public DashboardForm(Stage stage) {
+    public DashboardForm(Stage stage, String loggedInUser, Runnable onLogout) {
         this.stage = stage;
+        this.loggedInUser = loggedInUser;
+        this.onLogout = onLogout;
         this.db = DatabaseEngine.getInstance();
         this.settings = new SettingsManager();
         this.contentArea = new StackPane();
@@ -74,6 +81,11 @@ public class DashboardForm {
         sub.setTextFill(Color.rgb(255, 255, 255, 0.6));
         sub.setPadding(new Insets(0, 0, 10, 0));
 
+        Label userBadge = new Label("Logged in as " + loggedInUser);
+        userBadge.setFont(Font.font("System", 11));
+        userBadge.setTextFill(Color.rgb(255, 255, 255, 0.5));
+        userBadge.setPadding(new Insets(0, 0, 5, 0));
+
         curriculumSwitcher.setItems(FXCollections.observableArrayList(
             CurriculumSystem.SYSTEM_844.getDisplayName(),
             CurriculumSystem.CBC.getDisplayName()
@@ -91,6 +103,7 @@ public class DashboardForm {
             {"Subjects", ""},
             {"Exams", ""},
             {"Grading Scales", ""},
+            {"Users", ""},
             {"Marks Entry", ""},
             {"Bulk Marks", ""},
             {"Analysis", ""},
@@ -113,7 +126,17 @@ public class DashboardForm {
             nav.getChildren().add(lbl);
         }
 
-        sidebar.getChildren().addAll(title, sub, curriculumSwitcher, nav);
+        VBox spacer = new VBox();
+        VBox.setVgrow(spacer, Priority.ALWAYS);
+
+        Button logoutBtn = new Button("Logout");
+        logoutBtn.setPrefWidth(210);
+        logoutBtn.setStyle("-fx-background-color: rgba(255,255,255,0.1); -fx-text-fill: white; -fx-font-size: 13; -fx-background-radius: 6;");
+        logoutBtn.setOnAction(e -> {
+            if (onLogout != null) onLogout.run();
+        });
+
+        sidebar.getChildren().addAll(title, sub, userBadge, curriculumSwitcher, nav, spacer, logoutBtn);
         return sidebar;
     }
 
@@ -143,6 +166,7 @@ public class DashboardForm {
             case "subjects" -> showSubjects();
             case "exams" -> showExams();
             case "grading_scales" -> showGradingScales();
+            case "users" -> showUsers();
             case "marks_entry" -> showMarksEntry();
             case "bulk_marks" -> showBulkMarks();
             case "analysis" -> showAnalysis();
@@ -180,7 +204,65 @@ public class DashboardForm {
         welcome.setTextFill(Color.gray(0.4));
         welcome.setWrapText(true);
 
-        view.getChildren().addAll(header, welcome, cards, trendSection);
+        // Demo data section
+        VBox demoBox = new VBox(8);
+        demoBox.setPadding(new Insets(15));
+        demoBox.setStyle("-fx-background-color: #fff3e0; -fx-background-radius: 8; -fx-border-color: #ffcc80; -fx-border-radius: 8;");
+        Label demoLabel = new Label("Demo Data Tools");
+        demoLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
+        demoLabel.setTextFill(Color.web("#e65100"));
+
+        HBox demoBtns = new HBox(10);
+        Button seedStudentsBtn = new Button("Generate Students (20/stream)");
+        Button seedMarksBtn = new Button("Generate Marks for Exam 1");
+        ProgressIndicator demoSpinner = new ProgressIndicator();
+        demoSpinner.setVisible(false);
+        demoSpinner.setPrefSize(20, 20);
+        Label demoStatus = new Label();
+        demoStatus.setFont(Font.font("System", 12));
+        demoStatus.setTextFill(Color.gray(0.5));
+        demoBtns.getChildren().addAll(seedStudentsBtn, seedMarksBtn, demoSpinner);
+
+        seedStudentsBtn.setOnAction(e -> {
+            demoSpinner.setVisible(true);
+            demoStatus.setText("Generating students...");
+            javafx.concurrent.Task<Integer> task = new javafx.concurrent.Task<>() {
+                @Override protected Integer call() throws Exception {
+                    return new SeedData().seedAll();
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                demoSpinner.setVisible(false);
+                demoStatus.setText("Generated " + task.getValue() + " students across 4 forms.");
+                showDashboard();
+            });
+            task.setOnFailed(ev -> { demoSpinner.setVisible(false); demoStatus.setText("Error: " + task.getException().getMessage()); });
+            new Thread(task).start();
+        });
+
+        seedMarksBtn.setOnAction(e -> {
+            demoSpinner.setVisible(true);
+            demoStatus.setText("Generating marks...");
+            javafx.concurrent.Task<String> task = new javafx.concurrent.Task<>() {
+                @Override protected String call() throws Exception {
+                    SeedData sd = new SeedData();
+                    long eid = sd.getFirstExamId();
+                    if (eid < 0) return "No exams found. Create an exam first.";
+                    int count = sd.seedMarks(eid);
+                    return "Generated " + count + " marks for exam " + eid + ".";
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                demoSpinner.setVisible(false);
+                demoStatus.setText(task.getValue());
+                showDashboard();
+            });
+            task.setOnFailed(ev -> { demoSpinner.setVisible(false); demoStatus.setText("Error: " + task.getException().getMessage()); });
+            new Thread(task).start();
+        });
+
+        demoBox.getChildren().addAll(demoLabel, demoBtns, demoStatus);
+        view.getChildren().addAll(header, welcome, cards, trendSection, demoBox);
         contentArea.getChildren().setAll(view);
     }
 
@@ -290,6 +372,11 @@ public class DashboardForm {
     private void showGradingScales() {
         gradingScaleForm = new GradingScaleForm(db, settings);
         setContent(gradingScaleForm.getView());
+    }
+
+    private void showUsers() {
+        userManagementForm = new UserManagementForm();
+        setContent(userManagementForm.getView());
     }
 
     private void showMarksEntry() {

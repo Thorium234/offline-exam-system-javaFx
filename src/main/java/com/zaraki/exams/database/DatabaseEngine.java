@@ -1,5 +1,7 @@
 package com.zaraki.exams.database;
 
+import com.zaraki.exams.auth.PasswordUtils;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -105,6 +107,36 @@ public class DatabaseEngine {
                 );
                 CREATE INDEX IF NOT EXISTS idx_exams_year_term ON exams(academic_year, term);
             """);
+
+            boolean usersExists = false;
+            try (var rs = stmt.executeQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")) {
+                usersExists = rs.next();
+            }
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username      TEXT    NOT NULL UNIQUE,
+                    password_hash TEXT    NOT NULL,
+                    salt          TEXT    NOT NULL,
+                    full_name     TEXT    NOT NULL,
+                    role          TEXT    NOT NULL DEFAULT 'teacher'
+                );
+            """);
+
+            if (!usersExists) {
+                String salt = PasswordUtils.generateSalt();
+                String hash = PasswordUtils.hashPassword("admin", salt);
+                try (var ups = connection.prepareStatement(
+                        "INSERT OR IGNORE INTO users (username, password_hash, salt, full_name, role) VALUES (?,?,?,?,?)")) {
+                    ups.setString(1, "admin");
+                    ups.setString(2, hash);
+                    ups.setString(3, salt);
+                    ups.setString(4, "Administrator");
+                    ups.setString(5, "admin");
+                    ups.executeUpdate();
+                }
+            }
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS marks (

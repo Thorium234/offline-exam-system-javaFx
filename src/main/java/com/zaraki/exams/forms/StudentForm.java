@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.reporting.ReportCardGenerator;
 import com.zaraki.exams.service.ExcelService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -17,6 +18,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.sql.*;
 
 public class StudentForm {
@@ -56,10 +58,12 @@ public class StudentForm {
         HBox excelRow = new HBox(10);
         Button genBtn = new Button("Generate Template");
         Button uploadBtn = new Button("Upload Filled Sheet");
+        Button exportPdfBtn = new Button("Export PDF");
+        Button exportExcelBtn = new Button("Export Excel");
         ProgressIndicator spinner = new ProgressIndicator();
         spinner.setVisible(false);
         spinner.setPrefSize(20, 20);
-        excelRow.getChildren().addAll(genBtn, uploadBtn, spinner);
+        excelRow.getChildren().addAll(genBtn, uploadBtn, exportPdfBtn, exportExcelBtn, spinner);
 
         statusLabel = new Label();
         statusLabel.setTextFill(Color.gray(0.5));
@@ -134,6 +138,44 @@ public class StudentForm {
                 statusLabel.setText("Imported: " + r.inserted() + " new, " + r.updated() + " updated, " + r.errors() + " errors");
                 load();
             });
+            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            new Thread(task).start();
+        });
+
+        exportPdfBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Export Student List as PDF");
+            fc.setInitialFileName("student_list.pdf");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
+            File file = fc.showSaveDialog(stage);
+            if (file == null) return;
+            spinner.setVisible(true);
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() {
+                    new ReportCardGenerator().generateStudentListPdf("", "", file.toPath());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("PDF saved: " + file.getName()); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            new Thread(task).start();
+        });
+
+        exportExcelBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Export Student List as Excel");
+            fc.setInitialFileName("student_list.xlsx");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
+            File file = fc.showSaveDialog(stage);
+            if (file == null) return;
+            spinner.setVisible(true);
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() {
+                    new ExcelService().generateStudentListExcel(file.toPath(), "", "");
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Excel saved: " + file.getName()); });
             task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
             new Thread(task).start();
         });

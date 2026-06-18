@@ -394,6 +394,56 @@ public class ReportCardGenerator {
         doc.add(container);
     }
 
+    public void generateStudentListPdf(String filterCol, String filterValue, Path outputPath) {
+        Document doc = new Document(PageSize.A4, 30, 30, 30, 30);
+        try {
+            PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
+            doc.open();
+
+            Font tf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16, Color.BLUE);
+            Paragraph title = new Paragraph("THORIUM EXAM ANALYSIS SYSTEM", tf);
+            title.setAlignment(Element.ALIGN_CENTER);
+            doc.add(title);
+
+            Font sf = FontFactory.getFont(FontFactory.HELVETICA, 11);
+            String groupLabel = filterCol.equals("form") ? "Form " + filterValue : filterCol.equals("stream") ? "Stream: " + filterValue : "All Students";
+            Paragraph info = new Paragraph("Student List - " + groupLabel, sf);
+            info.setAlignment(Element.ALIGN_CENTER);
+            doc.add(info);
+            doc.add(Chunk.NEWLINE);
+
+            PdfPTable table = new PdfPTable(4);
+            table.setWidthPercentage(100);
+            String[] headers = {"#", "Admission", "Name", "Stream"};
+            Font hf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Color.WHITE);
+            for (String h : headers) {
+                PdfPCell c = new PdfPCell(new Phrase(h, hf));
+                c.setBackgroundColor(new Color(26, 35, 126)); c.setPadding(5);
+                table.addCell(c);
+            }
+
+            String where = filterCol.isEmpty() ? "" : " WHERE " + filterCol + " = ?";
+            String sql = "SELECT admission_number, full_name, form, stream FROM students" + where + " ORDER BY form, stream, admission_number";
+            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                if (!filterCol.isEmpty()) ps.setString(1, filterValue);
+                ResultSet rs = ps.executeQuery();
+                Font rf = FontFactory.getFont(FontFactory.HELVETICA, 10);
+                int num = 1;
+                while (rs.next()) {
+                    table.addCell(new Phrase(String.valueOf(num++), rf));
+                    table.addCell(new Phrase(rs.getString("admission_number"), rf));
+                    table.addCell(new Phrase(rs.getString("full_name"), rf));
+                    table.addCell(new Phrase("F" + rs.getInt("form") + " " + rs.getString("stream"), rf));
+                }
+            } catch (SQLException e) { throw new RuntimeException(e); }
+
+            doc.add(table);
+            doc.close();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate student list", e);
+        }
+    }
+
     public void generateGroupReport(long examId, String groupBy, String groupValue, Path outputPath) {
         Document doc = new Document(PageSize.A4.rotate(), 20, 20, 25, 25);
         try {

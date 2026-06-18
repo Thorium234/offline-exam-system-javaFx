@@ -48,6 +48,40 @@ public class ExcelService {
         }
     }
 
+    public void generateStudentListExcel(Path outputPath, String filterCol, String filterValue) {
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Student List");
+            Row headerRow = sheet.createRow(0);
+            String[] cols = {"#", "Admission No.", "Full Name", "Form", "Stream"};
+            for (int i = 0; i < cols.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(cols[i]);
+                cell.setCellStyle(boldStyle(wb));
+            }
+
+            String where = filterCol.isEmpty() ? "" : " WHERE " + filterCol + " = ?";
+            String sql = "SELECT admission_number, full_name, form, stream FROM students" + where + " ORDER BY form, stream, admission_number";
+            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                if (!filterCol.isEmpty()) ps.setString(1, filterValue);
+                ResultSet rs = ps.executeQuery();
+                int num = 1;
+                while (rs.next()) {
+                    Row row = sheet.createRow(num);
+                    row.createCell(0).setCellValue(num++);
+                    row.createCell(1).setCellValue(rs.getString("admission_number"));
+                    row.createCell(2).setCellValue(rs.getString("full_name"));
+                    row.createCell(3).setCellValue("Form " + rs.getInt("form"));
+                    row.createCell(4).setCellValue(rs.getString("stream"));
+                }
+            } catch (SQLException e) { throw new RuntimeException(e); }
+
+            for (int i = 0; i < cols.length; i++) sheet.autoSizeColumn(i);
+            try (FileOutputStream fos = new FileOutputStream(outputPath.toFile())) { wb.write(fos); }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to generate student list Excel", e);
+        }
+    }
+
     public StudentImportResult processStudentUpload(Path inputPath) {
         List<String> errors = new ArrayList<>();
         int inserted = 0, updated = 0, totalRows = 0;
