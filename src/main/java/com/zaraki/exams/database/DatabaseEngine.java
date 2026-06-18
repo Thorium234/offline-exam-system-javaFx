@@ -93,6 +93,7 @@ public class DatabaseEngine {
                     FOREIGN KEY (subject_id) REFERENCES subjects(id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_grading_subject ON grading_scales(subject_id);
+                CREATE INDEX IF NOT EXISTS idx_grading_range ON grading_scales(minimum_mark, maximum_mark);
             """);
 
             stmt.execute("""

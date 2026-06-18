@@ -1,0 +1,131 @@
+/* Thorium Exam Analysis System - Application Styles */
+
+/* Root & Background */
+.root {
+    -fx-font-family: "System";
+    -fx-font-size: 13px;
+}
+
+/* Sidebar */
+.sidebar {
+    -fx-background-color: #1a237e;
+    -fx-padding: 20 12 20 12;
+}
+
+.sidebar-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.sidebar-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: rgba(255, 255, 255, 0.6);
+}
+
+.sidebar-nav-item {
+    -fx-font-size: 14px;
+    -fx-text-fill: rgba(255, 255, 255, 0.75);
+    -fx-padding: 10 15 10 15;
+    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+}
+
+.sidebar-nav-item:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Content Area */
+.content-area {
+    -fx-background-color: #f5f5f5;
+    -fx-padding: 30 40 30 40;
+}
+
+/* Page Headers */
+.page-header {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #212121;
+}
+
+/* Stat Cards */
+.stat-card {
+    -fx-background-color: white;
+    -fx-background-radius: 10;
+    -fx-padding: 20;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);
+}
+
+.stat-card-value {
+    -fx-font-size: 30px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1a237e;
+}
+
+.stat-card-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #888888;
+}
+
+/* Tables */
+.table-view {
+    -fx-background-color: white;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.04), 6, 0, 0, 1);
+}
+
+.table-view .column-header {
+    -fx-background-color: #1a237e;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: white;
+}
+
+/* Buttons */
+.button {
+    -fx-background-color: #1a237e;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 8 18;
+    -fx-background-radius: 6;
+}
+
+.button:hover {
+    -fx-background-color: #283593;
+}
+
+.button-secondary {
+    -fx-background-color: #e0e0e0;
+    -fx-text-fill: #333;
+}
+
+.button-secondary:hover {
+    -fx-background-color: #bdbdbd;
+}
+
+/* Input Fields */
+.text-field, .combo-box {
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 6 10;
+    -fx-border-color: #e0e0e0;
+    -fx-border-width: 1;
+}
+
+.text-field:focused, .combo-box:focused {
+    -fx-border-color: #1a237e;
+}
+
+/* Cards Container */
+.cards-container {
+    -fx-spacing: 20;
+}
+
+/* Progress Indicator */
+.progress-indicator {
+    -fx-progress-color: #1a237e;
+}
