@@ -3,10 +3,14 @@ package com.zaraki.exams.forms;
 import com.zaraki.exams.config.CurriculumSystem;
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.chart.*;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -15,6 +19,7 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 
 import java.sql.*;
+import java.util.List;
 
 public class DashboardForm {
 
@@ -145,6 +150,8 @@ public class DashboardForm {
         }
     }
 
+    private final ExamAnalysisService analysisService = new ExamAnalysisService();
+
     private void showDashboard() {
         VBox view = new VBox(20);
 
@@ -164,6 +171,8 @@ public class DashboardForm {
             statCard("Marks Entered", String.valueOf(markCount))
         );
 
+        VBox trendSection = buildTrendSection();
+
         Label welcome = new Label("Welcome to Thorium Exam Analysis System v2.\n"
             + "Active curriculum: " + settings.getCurriculum().getDisplayName()
             + "\nUse the sidebar to navigate.");
@@ -171,8 +180,80 @@ public class DashboardForm {
         welcome.setTextFill(Color.gray(0.4));
         welcome.setWrapText(true);
 
-        view.getChildren().addAll(header, welcome, cards);
+        view.getChildren().addAll(header, welcome, cards, trendSection);
         contentArea.getChildren().setAll(view);
+    }
+
+    private VBox buildTrendSection() {
+        VBox section = new VBox(10);
+        section.setPadding(new Insets(20, 0, 0, 0));
+
+        Label trendLabel = new Label("Performance Trend");
+        trendLabel.setFont(Font.font("System", FontWeight.BOLD, 18));
+
+        HBox controls = new HBox(10);
+        ComboBox<String> studentBox = new ComboBox<>();
+        studentBox.setPromptText("Select Student");
+        studentBox.setPrefWidth(300);
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(
+                 "SELECT id, admission_number, full_name FROM students ORDER BY admission_number")) {
+            while (rs.next())
+                studentBox.getItems().add(rs.getLong("id") + " - " + rs.getString("admission_number")
+                    + " | " + rs.getString("full_name"));
+        } catch (SQLException e) { showAlert(e.getMessage()); }
+
+        NumberAxis xAxis = new NumberAxis();
+        xAxis.setLabel("Exam #");
+        xAxis.setTickUnit(1);
+        xAxis.setForceZeroInRange(false);
+        NumberAxis yAxis = new NumberAxis();
+        yAxis.setLabel("Total Points");
+        yAxis.setForceZeroInRange(false);
+
+        LineChart<Number, Number> chart = new LineChart<>(xAxis, yAxis);
+        chart.setTitle("Total Points per Exam");
+        chart.setPrefHeight(300);
+        chart.setAnimated(false);
+        chart.setLegendVisible(false);
+
+        controls.getChildren().addAll(new Label("Student:"), studentBox);
+
+        studentBox.setOnAction(e -> {
+            if (studentBox.getValue() == null) return;
+            long studentId = Long.parseLong(studentBox.getValue().split(" - ")[0]);
+            Task<List<ExamAnalysisService.StudentTrend>> task = new Task<>() {
+                @Override protected List<ExamAnalysisService.StudentTrend> call() {
+                    return analysisService.computeStudentTrend(studentId);
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                List<ExamAnalysisService.StudentTrend> data = task.getValue();
+                XYChart.Series<Number, Number> series = new XYChart.Series<>();
+                series.setName("Total Points");
+                for (int i = 0; i < data.size(); i++) {
+                    series.getData().add(new XYChart.Data<>(i + 1, data.get(i).totalPoints()));
+                }
+                chart.getData().clear();
+                chart.getData().add(series);
+
+                if (!data.isEmpty()) {
+                    double minY = data.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).min().orElse(0);
+                    double maxY = data.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).max().orElse(0);
+                    double pad = Math.max((maxY - minY) * 0.15, 2);
+                    yAxis.setAutoRanging(false);
+                    yAxis.setLowerBound(Math.max(0, minY - pad));
+                    yAxis.setUpperBound(maxY + pad);
+                    yAxis.setTickUnit(Math.max(1, (maxY - minY + 2 * pad) / 8));
+                }
+            });
+            task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+            new Thread(task).start();
+        });
+
+        section.getChildren().addAll(trendLabel, controls, chart);
+        return section;
     }
 
     private VBox statCard(String title, String value) {

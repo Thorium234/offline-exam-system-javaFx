@@ -212,6 +212,37 @@ public class ExamAnalysisService {
         }
     }
 
+    public Map<Long, Double> getExamStudentTotals(long examId) {
+        Map<Long, Double> map = new HashMap<>();
+        String sql = "SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks WHERE exam_id = ? GROUP BY student_id";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next())
+                map.put(rs.getLong("student_id"), rs.getDouble("total"));
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to get exam totals", e);
+        }
+        return map;
+    }
+
+    public Map<Long, Integer> getExamStudentRanks(long examId) {
+        Map<Long, Double> totals = getExamStudentTotals(examId);
+        List<Map.Entry<Long, Double>> sorted = new ArrayList<>(totals.entrySet());
+        sorted.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+        Map<Long, Integer> ranks = new HashMap<>();
+        int rank = 0, prevCount = 0;
+        double prevTotal = Double.MAX_VALUE;
+        for (var entry : sorted) {
+            prevCount++;
+            if (entry.getValue() < prevTotal) rank = prevCount;
+            prevTotal = entry.getValue();
+            ranks.put(entry.getKey(), rank);
+        }
+        return ranks;
+    }
+
     public void autoGradeExam(long examId) {
         String fetchSql = """
             SELECT m.exam_id, m.student_id, m.subject_id, m.score
@@ -269,6 +300,109 @@ public class ExamAnalysisService {
             }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to auto-grade exam", e);
+        }
+    }
+
+    public record GradeDistribution(String subjectName, Map<String, Integer> gradeCounts) {}
+    public record ExamComparison(long studentId, String admissionNumber, String fullName,
+                                   String form, String stream,
+                                   double exam1Total, double exam2Total, double difference,
+                                   int exam1Pos, int exam2Pos, int posChange) {}
+    public record StudentTrend(long examId, String examLabel, double totalPoints) {}
+
+    public List<GradeDistribution> computeGradeDistribution(long examId) {
+        String sql = """
+            SELECT sub.subject_name, m.grade_achieved, COUNT(*) AS cnt
+            FROM marks m
+            JOIN subjects sub ON sub.id = m.subject_id
+            WHERE m.exam_id = ? AND m.grade_achieved IS NOT NULL
+            GROUP BY sub.subject_name, m.grade_achieved
+            ORDER BY sub.subject_name, m.grade_achieved
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            Map<String, Map<String, Integer>> map = new LinkedHashMap<>();
+            while (rs.next()) {
+                String subj = rs.getString("subject_name");
+                String grade = rs.getString("grade_achieved");
+                int cnt = rs.getInt("cnt");
+                map.computeIfAbsent(subj, k -> new LinkedHashMap<>()).put(grade, cnt);
+            }
+            List<GradeDistribution> list = new ArrayList<>();
+            for (var entry : map.entrySet())
+                list.add(new GradeDistribution(entry.getKey(), entry.getValue()));
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to compute grade distribution", e);
+        }
+    }
+
+    public List<ExamComparison> compareExams(long exam1Id, long exam2Id) {
+        String sql = """
+            SELECT s.id, s.admission_number, s.full_name, s.form, s.stream,
+                   COALESCE(e1.total, 0) AS exam1_total,
+                   COALESCE(e2.total, 0) AS exam2_total
+            FROM students s
+            LEFT JOIN (SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks WHERE exam_id = ? GROUP BY student_id) e1 ON e1.student_id = s.id
+            LEFT JOIN (SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks WHERE exam_id = ? GROUP BY student_id) e2 ON e2.student_id = s.id
+            WHERE e1.total IS NOT NULL OR e2.total IS NOT NULL
+            ORDER BY (COALESCE(e2.total, 0) - COALESCE(e1.total, 0)) DESC
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, exam1Id);
+            ps.setLong(2, exam2Id);
+            ResultSet rs = ps.executeQuery();
+            List<ExamComparison> list = new ArrayList<>();
+            while (rs.next()) {
+                double e1 = rs.getDouble("exam1_total");
+                double e2 = rs.getDouble("exam2_total");
+                list.add(new ExamComparison(
+                    rs.getLong("id"), rs.getString("admission_number"), rs.getString("full_name"),
+                    rs.getString("form"), rs.getString("stream"),
+                    e1, e2, Math.round((e2 - e1) * 10.0) / 10.0
+                ));
+            }
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to compare exams", e);
+        }
+    }
+
+    public long findPreviousExam(long examId) {
+        String sql = "SELECT id FROM exams WHERE id < ? ORDER BY id DESC LIMIT 1";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getLong("id") : -1;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to find previous exam", e);
+        }
+    }
+
+    public List<StudentTrend> computeStudentTrend(long studentId) {
+        String sql = """
+            SELECT e.id, e.academic_year || ' ' || e.term || ' ' || e.exam_series AS label,
+                   COALESCE(SUM(m.points_achieved), 0) AS total_points
+            FROM marks m
+            JOIN exams e ON e.id = m.exam_id
+            WHERE m.student_id = ?
+            GROUP BY e.id, e.academic_year, e.term, e.exam_series
+            ORDER BY e.id
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, studentId);
+            ResultSet rs = ps.executeQuery();
+            List<StudentTrend> list = new ArrayList<>();
+            while (rs.next())
+                list.add(new StudentTrend(rs.getLong("id"), rs.getString("label"), rs.getDouble("total_points")));
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to compute student trend", e);
         }
     }
 
