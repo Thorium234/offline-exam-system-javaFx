@@ -2,9 +2,7 @@ package com.zaraki.exams.reporting;
 
 import com.lowagie.text.*;
 import com.lowagie.text.Font;
-import com.lowagie.text.pdf.PdfPCell;
-import com.lowagie.text.pdf.PdfPTable;
-import com.lowagie.text.pdf.PdfWriter;
+import com.lowagie.text.pdf.*;
 import com.zaraki.exams.database.DatabaseEngine;
 
 import java.awt.*;
@@ -14,6 +12,8 @@ import java.nio.file.Path;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ReportCardGenerator {
 
@@ -26,7 +26,7 @@ public class ReportCardGenerator {
     public void generateStudentReport(long examId, long studentId, Path outputPath) {
         Document doc = new Document(PageSize.A4, 36, 36, 36, 36);
         try {
-            PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
+            PdfWriter writer = PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
             doc.open();
 
             addHeader(doc, examId, studentId);
@@ -34,6 +34,7 @@ public class ReportCardGenerator {
             addSubjectTable(doc, examId, studentId);
             addSummary(doc, examId, studentId);
             addPerformanceIndicator(doc, examId, studentId);
+            addTrendChart(doc, writer, studentId);
 
             doc.close();
         } catch (Exception e) {
@@ -235,6 +236,158 @@ public class ReportCardGenerator {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void addTrendChart(Document doc, PdfWriter writer, long studentId) throws DocumentException {
+        String sql = """
+            SELECT e.id, e.academic_year || ' ' || e.term || ' ' || e.exam_series AS label,
+                   COALESCE(SUM(m.points_achieved), 0) AS total_points
+            FROM marks m
+            JOIN exams e ON e.id = m.exam_id
+            WHERE m.student_id = ?
+            GROUP BY e.id, e.academic_year, e.term, e.exam_series
+            ORDER BY e.id
+            """;
+        List<String> labels = new ArrayList<>();
+        List<Double> values = new ArrayList<>();
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, studentId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                labels.add(rs.getString("label"));
+                values.add(rs.getDouble("total_points"));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        if (values.size() < 2) return;
+
+        PdfPTable container = new PdfPTable(1);
+        container.setWidthPercentage(100);
+        container.setSpacingBefore(16);
+
+        Font chartTitleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.DARK_GRAY);
+        Paragraph chartTitle = new Paragraph("Performance Trend", chartTitleFont);
+        chartTitle.setAlignment(Element.ALIGN_CENTER);
+        PdfPCell titleCell = new PdfPCell(chartTitle);
+        titleCell.setBorder(PdfPCell.NO_BORDER);
+        titleCell.setPaddingBottom(6);
+        container.addCell(titleCell);
+
+        PdfPCell chartCell = new PdfPCell();
+        chartCell.setFixedHeight(140);
+        chartCell.setBorder(PdfPCell.NO_BORDER);
+        chartCell.setPaddingLeft(10);
+        chartCell.setPaddingRight(10);
+
+        chartCell.setCellEvent((cell, rect, canvases) -> {
+            PdfContentByte cb = canvases[PdfPTable.BASECANVAS];
+
+            BaseFont bf;
+            try { bf = BaseFont.createFont(); } catch (Exception e) { return; }
+
+            float x0 = rect.getLeft() + 30;
+            float y0 = rect.getBottom() + 10;
+            float w = rect.getWidth() - 45;
+            float h = rect.getHeight() - 30;
+
+            double minVal = values.stream().mapToDouble(v -> v).min().orElse(0);
+            double maxVal = values.stream().mapToDouble(v -> v).max().orElse(1);
+            double range = maxVal - minVal;
+            if (range == 0) range = 1;
+            double pad = range * 0.15;
+            double yMin = Math.max(0, minVal - pad);
+            double yMax = maxVal + pad;
+            double yRange = yMax - yMin;
+
+            // --- Draw axes ---
+            cb.setColorStroke(new Color(180, 180, 180));
+            cb.setLineWidth(1);
+            cb.moveTo(x0, y0);
+            cb.lineTo(x0 + w, y0);
+            cb.stroke();
+            cb.moveTo(x0, y0);
+            cb.lineTo(x0, y0 + h);
+            cb.stroke();
+
+            // --- Y-axis ticks & labels ---
+            int ticks = 4;
+            for (int i = 0; i <= ticks; i++) {
+                double val = yMin + (yRange * i / ticks);
+                float y = y0 + (float) ((val - yMin) / yRange * h);
+                cb.setColorStroke(new Color(220, 220, 220));
+                cb.setLineDash(2, 2);
+                cb.moveTo(x0, y);
+                cb.lineTo(x0 + w, y);
+                cb.stroke();
+                cb.resetRGBColorStroke();
+
+                cb.setColorFill(new Color(120, 120, 120));
+                String tickLabel = String.valueOf((int) Math.round(val));
+                float tw = 1f; // approximate
+                    cb.beginText();
+                    cb.setFontAndSize(bf, 7);
+                    cb.showTextAligned(Element.ALIGN_RIGHT, tickLabel, x0 - 3, y - 3, 0);
+                    cb.endText();
+            }
+
+            // --- Plot data ---
+            List<float[]> pts = new ArrayList<>();
+            for (int i = 0; i < values.size(); i++) {
+                float x = x0 + w * (i + 1) / (values.size() + 1);
+                float y = y0 + (float) ((values.get(i) - yMin) / yRange * h);
+                pts.add(new float[]{x, y});
+            }
+
+            // Connect lines
+            cb.setColorStroke(new Color(26, 35, 126));
+            cb.setLineWidth(2);
+            for (int i = 1; i < pts.size(); i++) {
+                cb.moveTo(pts.get(i - 1)[0], pts.get(i - 1)[1]);
+                cb.lineTo(pts.get(i)[0], pts.get(i)[1]);
+                cb.stroke();
+            }
+
+            // Draw points
+            cb.setColorFill(new Color(26, 35, 126));
+            for (float[] p : pts) {
+                cb.circle(p[0], p[1], 3);
+                cb.fill();
+            }
+
+            // X-axis labels (exam numbers)
+            cb.setColorFill(new Color(80, 80, 80));
+            for (int i = 0; i < labels.size(); i++) {
+                float x = x0 + w * (i + 1) / (values.size() + 1);
+                String shortLabel = "E" + (i + 1);
+                cb.beginText();
+                cb.setFontAndSize(bf, 7);
+                cb.showTextAligned(Element.ALIGN_CENTER, shortLabel, x, y0 - 12, 0);
+                cb.endText();
+            }
+        });
+
+        container.addCell(chartCell);
+
+        // Exam legend row
+        StringBuilder legendSb = new StringBuilder();
+        for (int i = 0; i < labels.size(); i++) {
+            String shortLabel = "E" + (i + 1);
+            String examPart = labels.get(i).length() > 25 ? labels.get(i).substring(0, 25) + "..." : labels.get(i);
+            legendSb.append(shortLabel).append("=").append(examPart);
+            if (i < labels.size() - 1) legendSb.append(",  ");
+        }
+        Font legFont = FontFactory.getFont(FontFactory.HELVETICA, 7, Color.GRAY);
+        Paragraph legend = new Paragraph(legendSb.toString(), legFont);
+        legend.setAlignment(Element.ALIGN_CENTER);
+        legend.setSpacingBefore(4);
+        PdfPCell legCell = new PdfPCell(legend);
+        legCell.setBorder(PdfPCell.NO_BORDER);
+        container.addCell(legCell);
+
+        doc.add(container);
     }
 
     private void addPerformanceIndicator(Document doc, long examId, long studentId) throws DocumentException {

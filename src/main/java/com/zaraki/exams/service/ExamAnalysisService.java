@@ -342,30 +342,41 @@ public class ExamAnalysisService {
     public List<ExamComparison> compareExams(long exam1Id, long exam2Id) {
         String sql = """
             SELECT s.id, s.admission_number, s.full_name, s.form, s.stream,
-                   COALESCE(e1.total, 0) AS exam1_total,
-                   COALESCE(e2.total, 0) AS exam2_total
+                   e1.total AS exam1_total, e2.total AS exam2_total
             FROM students s
-            LEFT JOIN (SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks WHERE exam_id = ? GROUP BY student_id) e1 ON e1.student_id = s.id
-            LEFT JOIN (SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks WHERE exam_id = ? GROUP BY student_id) e2 ON e2.student_id = s.id
-            WHERE e1.total IS NOT NULL OR e2.total IS NOT NULL
-            ORDER BY (COALESCE(e2.total, 0) - COALESCE(e1.total, 0)) DESC
+            JOIN (SELECT student_id, COALESCE(SUM(points_achieved), 0) AS total FROM marks WHERE exam_id = ? GROUP BY student_id) e1 ON e1.student_id = s.id
+            JOIN (SELECT student_id, COALESCE(SUM(points_achieved), 0) AS total FROM marks WHERE exam_id = ? GROUP BY student_id) e2 ON e2.student_id = s.id
+            ORDER BY (e2.total - e1.total) DESC
             """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, exam1Id);
             ps.setLong(2, exam2Id);
             ResultSet rs = ps.executeQuery();
-            List<ExamComparison> list = new ArrayList<>();
+            List<ExamComparison> raw = new ArrayList<>();
             while (rs.next()) {
                 double e1 = rs.getDouble("exam1_total");
                 double e2 = rs.getDouble("exam2_total");
-                list.add(new ExamComparison(
+                raw.add(new ExamComparison(
                     rs.getLong("id"), rs.getString("admission_number"), rs.getString("full_name"),
                     rs.getString("form"), rs.getString("stream"),
-                    e1, e2, Math.round((e2 - e1) * 10.0) / 10.0
+                    e1, e2, Math.round((e2 - e1) * 10.0) / 10.0,
+                    0, 0, 0
                 ));
             }
-            return list;
+
+            Map<Long, Integer> rank1 = getExamStudentRanks(exam1Id);
+            Map<Long, Integer> rank2 = getExamStudentRanks(exam2Id);
+
+            List<ExamComparison> result = new ArrayList<>();
+            for (ExamComparison ec : raw) {
+                int p1 = rank1.getOrDefault(ec.studentId(), 0);
+                int p2 = rank2.getOrDefault(ec.studentId(), 0);
+                result.add(new ExamComparison(ec.studentId(), ec.admissionNumber(), ec.fullName(),
+                    ec.form(), ec.stream(), ec.exam1Total(), ec.exam2Total(), ec.difference(),
+                    p1, p2, p1 > 0 ? p1 - p2 : 0));
+            }
+            return result;
         } catch (SQLException e) {
             throw new RuntimeException("Failed to compare exams", e);
         }

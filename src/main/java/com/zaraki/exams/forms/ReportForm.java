@@ -2,10 +2,14 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.reporting.ReportCardGenerator;
+import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.XYChart;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -16,7 +20,6 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.sql.*;
-import java.util.ArrayList;
 import java.util.List;
 
 public class ReportForm {
@@ -312,6 +315,43 @@ public class ReportForm {
         } catch (SQLException e) { showAlert(e.getMessage()); }
 
         previewBox.getChildren().add(summary);
+
+        // --- Performance Trend Chart ---
+        NumberAxis tx = new NumberAxis();
+        tx.setLabel("Exam #");
+        tx.setTickUnit(1);
+        tx.setForceZeroInRange(false);
+        NumberAxis ty = new NumberAxis();
+        ty.setLabel("Total Points");
+        ty.setForceZeroInRange(false);
+
+        LineChart<Number, Number> trendChart = new LineChart<>(tx, ty);
+        trendChart.setTitle("Performance Trend (All Exams)");
+        trendChart.setPrefHeight(220);
+        trendChart.setAnimated(false);
+        trendChart.setLegendVisible(false);
+
+        ExamAnalysisService eas = new ExamAnalysisService();
+        List<ExamAnalysisService.StudentTrend> trendData = eas.computeStudentTrend(studentId);
+        if (trendData.size() >= 2) {
+            XYChart.Series<Number, Number> series = new XYChart.Series<>();
+            series.setName("Total Points");
+            for (int i = 0; i < trendData.size(); i++)
+                series.getData().add(new XYChart.Data<>(i + 1, trendData.get(i).totalPoints()));
+            trendChart.getData().add(series);
+
+            double mn = trendData.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).min().orElse(0);
+            double mx = trendData.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).max().orElse(0);
+            double p = Math.max((mx - mn) * 0.15, 2);
+            ty.setAutoRanging(false);
+            ty.setLowerBound(Math.max(0, mn - p));
+            ty.setUpperBound(mx + p);
+            ty.setTickUnit(Math.max(1, (mx - mn + 2 * p) / 8));
+        }
+        VBox chartBox = new VBox(5, new Label("PERFORMANCE TREND"), trendChart);
+        chartBox.setPadding(new Insets(10, 0, 0, 0));
+        previewBox.getChildren().add(chartBox);
+
         previewBox.setVisible(true);
     }
 

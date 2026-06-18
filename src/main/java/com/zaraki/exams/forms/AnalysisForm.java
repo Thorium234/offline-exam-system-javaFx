@@ -3,16 +3,11 @@ package com.zaraki.exams.forms;
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
-import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
-import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
@@ -21,7 +16,6 @@ import javafx.scene.text.FontWeight;
 
 import java.sql.*;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class AnalysisForm {
 
@@ -91,32 +85,33 @@ public class AnalysisForm {
     private final TableView<StudentResultRow> classTable = new TableView<>();
 
     private Tab buildClassRankingsTab() {
-        Tab tab = new Tab("Class Rankings");
+        Tab tab = new Tab("Broadsheet");
         VBox content = new VBox(10);
         content.setPadding(new Insets(10));
         classTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
+        TableColumn<StudentResultRow, Number> cPos = new TableColumn<>("#");
+        cPos.setCellValueFactory(new PropertyValueFactory<>("classRank")); cPos.setPrefWidth(45);
+
+        TableColumn<StudentResultRow, Number> cPrevPos = new TableColumn<>("Prev Pos");
+        cPrevPos.setCellValueFactory(new PropertyValueFactory<>("prevPosition")); cPrevPos.setPrefWidth(65);
+
+        TableColumn<StudentResultRow, String> cPosChg = new TableColumn<>("Δ Pos");
+        cPosChg.setCellValueFactory(new PropertyValueFactory<>("positionChangeDisplay")); cPosChg.setPrefWidth(55);
+
         classTable.getColumns().addAll(
-            col("#", "classRank", 40),
-            col("Admission", "admissionNumber", 110),
-            col("Name", "fullName", 180),
-            col("Stream", "stream", 80),
+            cPos, cPrevPos, cPosChg,
+            col("Admission", "admissionNumber", 100),
+            col("Name", "fullName", 170),
+            col("Stream", "stream", 70),
             col("Marks", "totalMarks", 70),
             col("Pts", "totalPoints", 50),
-            col("Mean", "meanPoints", 60),
-            col("Grade", "meanGrade", 70),
-            col("Out Of", "classSize", 60)
+            col("Prev Pts", "prevTotalMarks", 65),
+            col("Mean", "meanPoints", 55),
+            col("Grade", "meanGrade", 65),
+            col("Out Of", "classSize", 55)
         );
 
-        TableColumn<StudentResultRow, Number> cPrevMarks = new TableColumn<>("Prev Marks");
-        cPrevMarks.setCellValueFactory(new PropertyValueFactory<>("prevTotalMarks"));
-        cPrevMarks.setPrefWidth(80);
-
-        TableColumn<StudentResultRow, String> cPosChange = new TableColumn<>("+/-");
-        cPosChange.setCellValueFactory(new PropertyValueFactory<>("positionChangeDisplay"));
-        cPosChange.setPrefWidth(60);
-
-        classTable.getColumns().addAll(cPrevMarks, cPosChange);
         content.getChildren().add(classTable);
         tab.setContent(content);
         return tab;
@@ -232,16 +227,26 @@ public class AnalysisForm {
         TableColumn<ExamComparisonRow, Number> cPosC = new TableColumn<>("#");
         cPosC.setCellValueFactory(new PropertyValueFactory<>("rank")); cPosC.setPrefWidth(50);
         TableColumn<ExamComparisonRow, String> cAdmC = new TableColumn<>("Admission");
-        cAdmC.setCellValueFactory(new PropertyValueFactory<>("admissionNumber")); cAdmC.setPrefWidth(110);
+        cAdmC.setCellValueFactory(new PropertyValueFactory<>("admissionNumber")); cAdmC.setPrefWidth(100);
         TableColumn<ExamComparisonRow, String> cNameC = new TableColumn<>("Name");
-        cNameC.setCellValueFactory(new PropertyValueFactory<>("fullName")); cNameC.setPrefWidth(180);
-        TableColumn<ExamComparisonRow, Number> cE1 = new TableColumn<>("Exam 1");
+        cNameC.setCellValueFactory(new PropertyValueFactory<>("fullName")); cNameC.setPrefWidth(160);
+        TableColumn<ExamComparisonRow, String> cFormC = new TableColumn<>("Form");
+        cFormC.setCellValueFactory(new PropertyValueFactory<>("form")); cFormC.setPrefWidth(55);
+        TableColumn<ExamComparisonRow, String> cStreamC = new TableColumn<>("Stream");
+        cStreamC.setCellValueFactory(new PropertyValueFactory<>("stream")); cStreamC.setPrefWidth(70);
+        TableColumn<ExamComparisonRow, Number> cE1 = new TableColumn<>("Exam1 Pts");
         cE1.setCellValueFactory(new PropertyValueFactory<>("exam1Total")); cE1.setPrefWidth(80);
-        TableColumn<ExamComparisonRow, Number> cE2 = new TableColumn<>("Exam 2");
+        TableColumn<ExamComparisonRow, Number> cE1Pos = new TableColumn<>("Pos1");
+        cE1Pos.setCellValueFactory(new PropertyValueFactory<>("exam1Pos")); cE1Pos.setPrefWidth(50);
+        TableColumn<ExamComparisonRow, Number> cE2 = new TableColumn<>("Exam2 Pts");
         cE2.setCellValueFactory(new PropertyValueFactory<>("exam2Total")); cE2.setPrefWidth(80);
-        TableColumn<ExamComparisonRow, Number> cDiff = new TableColumn<>("Change");
-        cDiff.setCellValueFactory(new PropertyValueFactory<>("difference")); cDiff.setPrefWidth(80);
-        compareTable.getColumns().addAll(cPosC, cAdmC, cNameC, cE1, cE2, cDiff);
+        TableColumn<ExamComparisonRow, Number> cE2Pos = new TableColumn<>("Pos2");
+        cE2Pos.setCellValueFactory(new PropertyValueFactory<>("exam2Pos")); cE2Pos.setPrefWidth(50);
+        TableColumn<ExamComparisonRow, Number> cDiff = new TableColumn<>("Δ Pts");
+        cDiff.setCellValueFactory(new PropertyValueFactory<>("difference")); cDiff.setPrefWidth(70);
+        TableColumn<ExamComparisonRow, String> cPosDelta = new TableColumn<>("Δ Pos");
+        cPosDelta.setCellValueFactory(new PropertyValueFactory<>("posChangeDisplay")); cPosDelta.setPrefWidth(60);
+        compareTable.getColumns().addAll(cPosC, cAdmC, cNameC, cFormC, cStreamC, cE1, cE1Pos, cE2, cE2Pos, cDiff, cPosDelta);
 
         compareBtn.setOnAction(e -> {
             if (exam1Box.getValue() == null || exam2Box.getValue() == null) return;
@@ -263,7 +268,9 @@ public class AnalysisForm {
                     if (ec.difference() < prevDiff) rank = i + 1;
                     prevDiff = ec.difference();
                     rows.add(new ExamComparisonRow(rank, ec.admissionNumber(), ec.fullName(),
-                        ec.exam1Total(), ec.exam2Total(), ec.difference()));
+                        ec.form(), ec.stream(),
+                        ec.exam1Total(), ec.exam2Total(), ec.difference(),
+                        ec.exam1Pos(), ec.exam2Pos(), ec.posChange()));
                 }
                 compareTable.setItems(rows);
                 spinner.setVisible(false);
@@ -278,20 +285,34 @@ public class AnalysisForm {
     }
 
     public static class ExamComparisonRow {
-        private final int rank;
-        private final String admissionNumber, fullName;
+        private final int rank, exam1Pos, exam2Pos;
+        private final String admissionNumber, fullName, form, stream;
         private final double exam1Total, exam2Total, difference;
         public ExamComparisonRow(int rank, String admissionNumber, String fullName,
-                                 double exam1Total, double exam2Total, double difference) {
+                                 String form, String stream,
+                                 double exam1Total, double exam2Total, double difference,
+                                 int exam1Pos, int exam2Pos, int posChange) {
             this.rank = rank; this.admissionNumber = admissionNumber; this.fullName = fullName;
+            this.form = form; this.stream = stream;
             this.exam1Total = exam1Total; this.exam2Total = exam2Total; this.difference = difference;
+            this.exam1Pos = exam1Pos; this.exam2Pos = exam2Pos;
         }
         public int getRank() { return rank; }
         public String getAdmissionNumber() { return admissionNumber; }
         public String getFullName() { return fullName; }
+        public String getForm() { return form; }
+        public String getStream() { return stream; }
         public double getExam1Total() { return exam1Total; }
         public double getExam2Total() { return exam2Total; }
         public double getDifference() { return difference; }
+        public int getExam1Pos() { return exam1Pos; }
+        public int getExam2Pos() { return exam2Pos; }
+        public String getPosChangeDisplay() {
+            int ch = exam1Pos > 0 ? exam1Pos - exam2Pos : 0;
+            if (ch > 0) return "+" + ch;
+            if (ch < 0) return String.valueOf(ch);
+            return "0";
+        }
     }
 
     // ────────────────────── Compute All Tabs ──────────────────────
