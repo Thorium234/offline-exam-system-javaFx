@@ -4,6 +4,7 @@ import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.reporting.ReportCardGenerator;
 import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
@@ -23,7 +24,7 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.sql.*;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class ReportForm {
@@ -49,7 +50,7 @@ public class ReportForm {
 
     private VBox previewBox;
     private Label statusLabel;
-    private TableView<BroadsheetRow> broadsheetTable = new TableView<>();
+    private TableView<MeritRow> broadsheetTable = new TableView<>();
 
     public ReportForm(DatabaseEngine db, Stage stage) {
         this.db = db;
@@ -404,7 +405,7 @@ public class ReportForm {
         previewBox.setVisible(true);
     }
 
-    // ─────────── Broadsheet preview (stream/class) ───────────
+    // ─────────── Merit List preview (stream/class with subject columns) ───────────
 
     private void loadBroadsheetPreview(long examId, String groupBy, String groupValue) {
         previewBox.getChildren().clear();
@@ -426,62 +427,195 @@ public class ReportForm {
 
         final String groupLabel = groupBy.equals("stream") ? "Stream: " + groupValue : "Form: " + groupValue;
         previewBox.getChildren().addAll(
-            new Label("Exam: " + examInfo),
-            new Label(groupLabel),
+            new Label("Exam: " + examInfo + "   |   " + groupLabel),
+            new Label("MERIT LIST"),
             new Separator()
         );
 
-        broadsheetTable = new TableView<>();
-        broadsheetTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        TableColumn<BroadsheetRow, Number> cPos = new TableColumn<>("#");
-        cPos.setCellValueFactory(new PropertyValueFactory<>("rank")); cPos.setPrefWidth(40);
-        TableColumn<BroadsheetRow, String> cAdm = new TableColumn<>("Admission");
-        cAdm.setCellValueFactory(new PropertyValueFactory<>("admissionNumber")); cAdm.setPrefWidth(100);
-        TableColumn<BroadsheetRow, String> cName = new TableColumn<>("Name");
-        cName.setCellValueFactory(new PropertyValueFactory<>("fullName")); cName.setPrefWidth(180);
-        TableColumn<BroadsheetRow, String> cStream = new TableColumn<>("Stream");
-        cStream.setCellValueFactory(new PropertyValueFactory<>("stream")); cStream.setPrefWidth(70);
-        TableColumn<BroadsheetRow, Number> cMarks = new TableColumn<>("Marks");
-        cMarks.setCellValueFactory(new PropertyValueFactory<>("totalMarks")); cMarks.setPrefWidth(70);
-        TableColumn<BroadsheetRow, Number> cPoints = new TableColumn<>("Pts");
-        cPoints.setCellValueFactory(new PropertyValueFactory<>("totalPoints")); cPoints.setPrefWidth(50);
-        TableColumn<BroadsheetRow, Number> cMean = new TableColumn<>("Mean");
-        cMean.setCellValueFactory(new PropertyValueFactory<>("meanPoints")); cMean.setPrefWidth(55);
-        TableColumn<BroadsheetRow, String> cGrade = new TableColumn<>("Grade");
-        cGrade.setCellValueFactory(new PropertyValueFactory<>("meanGrade")); cGrade.setPrefWidth(65);
-        broadsheetTable.getColumns().addAll(cPos, cAdm, cName, cStream, cMarks, cPoints, cMean, cGrade);
-
-        ExamAnalysisService eas = new ExamAnalysisService();
-        Task<List<ExamAnalysisService.StudentResult>> task = new Task<>() {
-            @Override protected List<ExamAnalysisService.StudentResult> call() {
-                return eas.computeClassRankings(examId);
+        String filterCol = groupBy.equals("stream") ? "stream" : "form";
+        Task<List<SubjectInfo>> subjTask = new Task<>() {
+            @Override protected List<SubjectInfo> call() throws SQLException {
+                List<SubjectInfo> list = new ArrayList<>();
+                try (Connection conn = db.getConnection();
+                     PreparedStatement ps = conn.prepareStatement(
+                         "SELECT DISTINCT sub.id, sub.subject_code, sub.subject_name FROM marks m JOIN subjects sub ON sub.id = m.subject_id WHERE m.exam_id = ? ORDER BY sub.subject_name")) {
+                    ps.setLong(1, examId);
+                    ResultSet rs = ps.executeQuery();
+                    while (rs.next())
+                        list.add(new SubjectInfo(rs.getLong("id"), rs.getString("subject_code"), rs.getString("subject_name")));
+                }
+                return list;
             }
         };
-        task.setOnSucceeded(ev -> {
-            List<ExamAnalysisService.StudentResult> all = task.getValue();
-            List<ExamAnalysisService.StudentResult> filtered;
-            if (groupBy.equals("stream"))
-                filtered = all.stream().filter(r -> r.stream().equalsIgnoreCase(groupValue)).collect(Collectors.toList());
-            else
-                filtered = all.stream().filter(r -> r.form().equals(groupValue)).collect(Collectors.toList());
 
-            ObservableList<BroadsheetRow> rows = FXCollections.observableArrayList();
-            for (ExamAnalysisService.StudentResult r : filtered)
-                rows.add(new BroadsheetRow(r.classRank(), r.admissionNumber(), r.fullName(),
-                    r.stream(), r.totalMarks(), r.totalPoints(), r.meanPoints(), r.meanGrade()));
-            broadsheetTable.setItems(rows);
-            previewBox.getChildren().add(broadsheetTable);
+        Task<List<MeritRow>> dataTask = new Task<>() {
+            @Override protected List<MeritRow> call() throws Exception {
+                List<SubjectInfo> subjects = subjTask.get();
 
-            int count = filtered.size();
-            Label footer = new Label("Total Students: " + count + "  |  Exam: " + examInfo + "  |  " + groupLabel);
-            footer.setFont(Font.font("System", FontWeight.BOLD, 12));
-            footer.setTextFill(Color.gray(0.4));
-            previewBox.getChildren().add(footer);
+                // Fetch students + marks
+                String sql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + filterCol + " = ? ORDER BY s.id, m.subject_id";
+                Map<Long, MeritRowBuilder> builders = new LinkedHashMap<>();
+                try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setLong(1, examId); ps.setString(2, groupValue);
+                    ResultSet rs = ps.executeQuery();
+                    while (rs.next()) {
+                        long sid = rs.getLong("id");
+                        String adm = rs.getString("admission_number");
+                        String name = rs.getString("full_name");
+                        String sStream = rs.getString("stream");
+                        MeritRowBuilder b = builders.computeIfAbsent(sid, k -> new MeritRowBuilder(adm, name, sStream));
+                        long subjId = rs.getLong("subject_id");
+                        if (!rs.wasNull()) {
+                            b.scores.put(subjId, rs.getDouble("score"));
+                            b.points.put(subjId, rs.getInt("points_achieved"));
+                        }
+                    }
+                }
+
+                // Subject means (exam-wide)
+                Map<Long, Double> means = new HashMap<>();
+                try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement("SELECT subject_id, AVG(score) AS m FROM marks WHERE exam_id = ? GROUP BY subject_id")) {
+                    ps.setLong(1, examId);
+                    ResultSet rs = ps.executeQuery();
+                    while (rs.next()) means.put(rs.getLong("subject_id"), rs.getDouble("m"));
+                }
+
+                // Subject positions (exam-wide)
+                Map<Long, List<Map.Entry<Long, Double>>> subjectScoreList = new HashMap<>();
+                for (var entry : builders.entrySet()) {
+                    long sid = entry.getKey();
+                    for (var se : entry.getValue().scores.entrySet()) {
+                        subjectScoreList.computeIfAbsent(se.getKey(), k -> new ArrayList<>()).add(Map.entry(sid, se.getValue()));
+                    }
+                }
+                Map<Long, Map<Long, Integer>> subjectPositions = new HashMap<>();
+                for (var entry : subjectScoreList.entrySet()) {
+                    long subjId = entry.getKey();
+                    var list = entry.getValue();
+                    list.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+                    int rank = 1;
+                    double prev = Double.MAX_VALUE;
+                    for (int i = 0; i < list.size(); i++) {
+                        var e = list.get(i);
+                        if (e.getValue() < prev) rank = i + 1;
+                        prev = e.getValue();
+                        subjectPositions.computeIfAbsent(subjId, k -> new HashMap<>()).put(e.getKey(), rank);
+                    }
+                }
+
+                // Build MeritRow list
+                List<MeritRow> result = new ArrayList<>();
+                List<Map.Entry<Long, MeritRowBuilder>> sorted = new ArrayList<>(builders.entrySet());
+                for (var entry : sorted) {
+                    long sid = entry.getKey();
+                    MeritRowBuilder b = entry.getValue();
+                    double totalMarks = b.scores.values().stream().mapToDouble(v -> v).sum();
+                    int totalPoints = b.points.values().stream().mapToInt(v -> v).sum();
+                    int count = b.points.size();
+                    double meanPts = count > 0 ? Math.round((double) totalPoints / count * 10.0) / 10.0 : 0;
+
+                    String grade = meanPts >= 12 ? "A" : meanPts >= 11 ? "A-" : meanPts >= 10 ? "B+" : meanPts >= 9 ? "B" : meanPts >= 8 ? "B-" : meanPts >= 7 ? "C+" : meanPts >= 6 ? "C" : meanPts >= 5 ? "C-" : meanPts >= 4 ? "D+" : meanPts >= 3 ? "D" : meanPts >= 2 ? "D-" : "E";
+
+                    Map<Long, Double> devs = new HashMap<>();
+                    for (var se : b.scores.entrySet()) {
+                        double mean = means.getOrDefault(se.getKey(), 0.0);
+                        devs.put(se.getKey(), Math.round((se.getValue() - mean) * 10.0) / 10.0);
+                    }
+
+                    result.add(new MeritRow(sid, b.admissionNumber, b.fullName, b.stream,
+                        totalMarks, totalPoints, meanPts, grade,
+                        b.scores, devs, subjectPositions));
+                }
+                // Sort by totalPoints descending, assign ranks
+                result.sort((a, b) -> Integer.compare(b.totalPoints, a.totalPoints));
+                int rank = 0, prevPts = Integer.MAX_VALUE;
+                for (int i = 0; i < result.size(); i++) {
+                    MeritRow r = result.get(i);
+                    if (r.totalPoints < prevPts) rank = i + 1;
+                    prevPts = r.totalPoints;
+                    result.set(i, new MeritRow(r.studentId, r.admissionNumber, r.fullName, r.stream,
+                        r.totalMarks, r.totalPoints, r.meanPoints, r.meanGrade,
+                        r.scores, r.deviations, r.positions, rank));
+                }
+                return result;
+            }
+        };
+
+        subjTask.setOnSucceeded(ev -> new Thread(dataTask).start());
+        subjTask.setOnFailed(ev -> showAlert(subjTask.getException().getMessage()));
+        new Thread(subjTask).start();
+
+        dataTask.setOnSucceeded(ev -> {
+            List<SubjectInfo> subjects = subjTask.getValue();
+            List<MeritRow> rows = dataTask.getValue();
+            buildMeritTable(subjects, rows, examInfo, groupLabel);
         });
-        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
-        new Thread(task).start();
+        dataTask.setOnFailed(ev -> showAlert(dataTask.getException().getMessage()));
 
         previewBox.setVisible(true);
+    }
+
+    private void buildMeritTable(List<SubjectInfo> subjects, List<MeritRow> rows, String examInfo, String groupLabel) {
+        broadsheetTable = new TableView<>();
+        broadsheetTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+        TableColumn<MeritRow, Number> cPos = new TableColumn<>("#");
+        cPos.setCellValueFactory(new PropertyValueFactory<>("rank")); cPos.setPrefWidth(35);
+        TableColumn<MeritRow, String> cAdm = new TableColumn<>("Adm");
+        cAdm.setCellValueFactory(new PropertyValueFactory<>("admissionNumber")); cAdm.setPrefWidth(80);
+        TableColumn<MeritRow, String> cName = new TableColumn<>("Name");
+        cName.setCellValueFactory(new PropertyValueFactory<>("fullName")); cName.setPrefWidth(140);
+
+        broadsheetTable.getColumns().addAll(cPos, cAdm, cName);
+
+        for (SubjectInfo si : subjects) {
+            TableColumn<MeritRow, String> parentCol = new TableColumn<>(si.code != null ? si.code : si.name.substring(0, Math.min(4, si.name.length())));
+
+            TableColumn<MeritRow, Number> scrCol = new TableColumn<>("Scr");
+            scrCol.setPrefWidth(45);
+            long subjId = si.id;
+            scrCol.setCellValueFactory(cd -> {
+                MeritRow r = cd.getValue();
+                return new SimpleObjectProperty<>(r.scores.getOrDefault(subjId, 0.0));
+            });
+
+            TableColumn<MeritRow, Number> devCol = new TableColumn<>("Dev");
+            devCol.setPrefWidth(45);
+            devCol.setCellValueFactory(cd -> {
+                MeritRow r = cd.getValue();
+                return new SimpleObjectProperty<>(r.deviations.getOrDefault(subjId, 0.0));
+            });
+
+            TableColumn<MeritRow, Number> posCol = new TableColumn<>("Pos");
+            posCol.setPrefWidth(35);
+            posCol.setCellValueFactory(cd -> {
+                MeritRow r = cd.getValue();
+                Map<Long, Integer> posMap = r.positions.getOrDefault(subjId, new HashMap<>());
+                return new SimpleObjectProperty<>(posMap.getOrDefault(r.studentId, 0));
+            });
+
+            parentCol.getColumns().addAll(scrCol, devCol, posCol);
+            broadsheetTable.getColumns().add(parentCol);
+        }
+
+        TableColumn<MeritRow, Number> cMarks = new TableColumn<>("T.Mks");
+        cMarks.setCellValueFactory(new PropertyValueFactory<>("totalMarks")); cMarks.setPrefWidth(55);
+        TableColumn<MeritRow, Number> cPts = new TableColumn<>("Pts");
+        cPts.setCellValueFactory(new PropertyValueFactory<>("totalPoints")); cPts.setPrefWidth(45);
+        TableColumn<MeritRow, Number> cMean = new TableColumn<>("Mean");
+        cMean.setCellValueFactory(new PropertyValueFactory<>("meanPoints")); cMean.setPrefWidth(50);
+        TableColumn<MeritRow, String> cGrade = new TableColumn<>("Gr");
+        cGrade.setCellValueFactory(new PropertyValueFactory<>("meanGrade")); cGrade.setPrefWidth(40);
+        broadsheetTable.getColumns().addAll(cMarks, cPts, cMean, cGrade);
+
+        ObservableList<MeritRow> data = FXCollections.observableArrayList(rows);
+        broadsheetTable.setItems(data);
+        previewBox.getChildren().add(broadsheetTable);
+
+        Label footer = new Label("Total: " + rows.size() + " students  |  " + examInfo + "  |  " + groupLabel);
+        footer.setFont(Font.font("System", FontWeight.BOLD, 12));
+        footer.setTextFill(Color.gray(0.4));
+        previewBox.getChildren().add(footer);
     }
 
     // ─────────── Helpers ───────────
@@ -524,18 +658,48 @@ public class ReportForm {
     private void showAlert(String msg) { Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait()); }
     private void showInfo(String msg) { Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait()); }
 
-    public static class BroadsheetRow {
-        private final int rank;
-        private final String admissionNumber, fullName, stream, meanGrade;
-        private final double totalMarks, meanPoints;
-        private final int totalPoints;
+    // ─────────── Merit List data classes ───────────
 
-        public BroadsheetRow(int rank, String admissionNumber, String fullName, String stream,
-                             double totalMarks, int totalPoints, double meanPoints, String meanGrade) {
-            this.rank = rank; this.admissionNumber = admissionNumber; this.fullName = fullName;
+    public static class SubjectInfo {
+        public final long id;
+        public final String code, name;
+        public SubjectInfo(long id, String code, String name) { this.id = id; this.code = code; this.name = name; }
+    }
+
+    static class MeritRowBuilder {
+        final String admissionNumber, fullName, stream;
+        final Map<Long, Double> scores = new HashMap<>();
+        final Map<Long, Integer> points = new HashMap<>();
+        MeritRowBuilder(String adm, String name, String stream) { this.admissionNumber = adm; this.fullName = name; this.stream = stream; }
+    }
+
+    public static class MeritRow {
+        public final long studentId;
+        public final int rank, totalPoints;
+        public final String admissionNumber, fullName, stream, meanGrade;
+        public final double totalMarks, meanPoints;
+        public final Map<Long, Double> scores, deviations;
+        public final Map<Long, Map<Long, Integer>> positions; // subjectId -> {studentId -> rank}
+
+        public MeritRow(long studentId, String admissionNumber, String fullName, String stream,
+                        double totalMarks, int totalPoints, double meanPoints, String meanGrade,
+                        Map<Long, Double> scores, Map<Long, Double> deviations,
+                        Map<Long, Map<Long, Integer>> positions) {
+            this(studentId, admissionNumber, fullName, stream, totalMarks, totalPoints, meanPoints, meanGrade,
+                scores, deviations, positions, 0);
+        }
+
+        public MeritRow(long studentId, String admissionNumber, String fullName, String stream,
+                        double totalMarks, int totalPoints, double meanPoints, String meanGrade,
+                        Map<Long, Double> scores, Map<Long, Double> deviations,
+                        Map<Long, Map<Long, Integer>> positions, int rank) {
+            this.studentId = studentId; this.admissionNumber = admissionNumber; this.fullName = fullName;
             this.stream = stream; this.totalMarks = totalMarks; this.totalPoints = totalPoints;
             this.meanPoints = meanPoints; this.meanGrade = meanGrade;
+            this.scores = scores; this.deviations = deviations; this.positions = positions;
+            this.rank = rank;
         }
+
         public int getRank() { return rank; }
         public String getAdmissionNumber() { return admissionNumber; }
         public String getFullName() { return fullName; }

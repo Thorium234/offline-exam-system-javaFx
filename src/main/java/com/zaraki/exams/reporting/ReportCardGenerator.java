@@ -13,7 +13,11 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ReportCardGenerator {
 
@@ -391,94 +395,192 @@ public class ReportCardGenerator {
     }
 
     public void generateGroupReport(long examId, String groupBy, String groupValue, Path outputPath) {
-        Document doc = new Document(PageSize.A4.rotate(), 24, 24, 30, 30);
+        Document doc = new Document(PageSize.A4.rotate(), 20, 20, 25, 25);
         try {
             PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
             doc.open();
 
-            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16, Color.BLUE);
-            Paragraph title = new Paragraph("THORIUM EXAM ANALYSIS SYSTEM", titleFont);
+            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, Color.BLUE);
+            Paragraph title = new Paragraph("THORIUM EXAM ANALYSIS SYSTEM - MERIT LIST", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             doc.add(title);
 
             String examSql = "SELECT academic_year, term, exam_series FROM exams WHERE id = ?";
+            String examInfo;
             try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(examSql)) {
                 ps.setLong(1, examId);
                 ResultSet rs = ps.executeQuery();
-                if (rs.next()) {
-                    Font sf = FontFactory.getFont(FontFactory.HELVETICA, 11);
-                    String examInfo = rs.getString("academic_year") + " - " + rs.getString("term") + " - " + rs.getString("exam_series");
-                    String groupLabel = groupBy.equals("stream") ? "Stream: " + groupValue : "Form: " + groupValue;
-                    Paragraph info = new Paragraph("Exam: " + examInfo + "   |   " + groupLabel, sf);
-                    info.setAlignment(Element.ALIGN_CENTER);
-                    doc.add(info);
-                    doc.add(Chunk.NEWLINE);
-                }
+                examInfo = rs.next() ? rs.getString("academic_year") + " - " + rs.getString("term") + " - " + rs.getString("exam_series") : "";
             }
+            String groupLabel = groupBy.equals("stream") ? "Stream: " + groupValue : "Form: " + groupValue;
+            Font sf = FontFactory.getFont(FontFactory.HELVETICA, 10);
+            Paragraph info = new Paragraph("Exam: " + examInfo + "   |   " + groupLabel, sf);
+            info.setAlignment(Element.ALIGN_CENTER);
+            doc.add(info);
+            doc.add(Chunk.NEWLINE);
 
-            PdfPTable table = new PdfPTable(8);
-            table.setWidthPercentage(100);
-            String[] headers = {"#", "Admission", "Name", "Stream", "Marks", "Pts", "Mean", "Grade"};
-            Font hf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.WHITE);
-            for (String h : headers) {
-                PdfPCell c = new PdfPCell(new Phrase(h, hf));
-                c.setBackgroundColor(new Color(26, 35, 126));
-                c.setPadding(4);
-                table.addCell(c);
-            }
-
-            String filterCol = groupBy.equals("stream") ? "s.stream = ?" : "s.form = ?";
-            String dataSql = """
-                SELECT s.admission_number, s.full_name, s.stream, s.form,
-                       ROUND(SUM(m.score), 1) AS total_marks,
-                       COALESCE(SUM(m.points_achieved), 0) AS total_points,
-                       ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points,
-                       CASE WHEN AVG(m.points_achieved) >= 12 THEN 'A'
-                            WHEN AVG(m.points_achieved) >= 11 THEN 'A-'
-                            WHEN AVG(m.points_achieved) >= 10 THEN 'B+'
-                            WHEN AVG(m.points_achieved) >= 9  THEN 'B'
-                            WHEN AVG(m.points_achieved) >= 8  THEN 'B-'
-                            WHEN AVG(m.points_achieved) >= 7  THEN 'C+'
-                            WHEN AVG(m.points_achieved) >= 6  THEN 'C'
-                            WHEN AVG(m.points_achieved) >= 5  THEN 'C-'
-                            WHEN AVG(m.points_achieved) >= 4  THEN 'D+'
-                            WHEN AVG(m.points_achieved) >= 3  THEN 'D'
-                            WHEN AVG(m.points_achieved) >= 2  THEN 'D-'
-                            ELSE 'E'
-                       END AS mean_grade
-                FROM marks m
-                JOIN students s ON s.id = m.student_id
-                WHERE m.exam_id = ? AND """ + filterCol + """
-                GROUP BY s.id
-                ORDER BY total_points DESC
-                """;
-            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(dataSql)) {
+            // Subjects
+            List<Long> subjIds = new ArrayList<>();
+            List<String> subjCodes = new ArrayList<>();
+            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(
+                    "SELECT DISTINCT sub.id, sub.subject_code FROM marks m JOIN subjects sub ON sub.id = m.subject_id WHERE m.exam_id = ? ORDER BY sub.subject_name")) {
                 ps.setLong(1, examId);
-                ps.setString(2, groupValue);
                 ResultSet rs = ps.executeQuery();
-                Font rf = FontFactory.getFont(FontFactory.HELVETICA, 9);
-                int rank = 0, prevPts = Integer.MAX_VALUE, total = 0;
                 while (rs.next()) {
-                    total++;
-                    int pts = rs.getInt("total_points");
-                    if (pts < prevPts) rank = total;
-                    prevPts = pts;
-
-                    table.addCell(new Phrase(String.valueOf(rank), rf));
-                    table.addCell(new Phrase(rs.getString("admission_number"), rf));
-                    table.addCell(new Phrase(rs.getString("full_name"), rf));
-                    table.addCell(new Phrase(rs.getString("stream"), rf));
-                    table.addCell(new Phrase(String.valueOf(rs.getDouble("total_marks")), rf));
-                    table.addCell(new Phrase(String.valueOf(pts), rf));
-                    table.addCell(new Phrase(String.valueOf(rs.getDouble("mean_points")), rf));
-                    table.addCell(new Phrase(rs.getString("mean_grade"), rf));
+                    subjIds.add(rs.getLong("id"));
+                    String code = rs.getString("subject_code");
+                    subjCodes.add(code != null && !code.isBlank() ? code : "S" + subjIds.size());
                 }
-            } catch (SQLException e) { throw new RuntimeException(e); }
+            }
+
+            // Column count: # + Adm + Name + (3 per subject: Scr, Dev, Pos) + T.Mks + Pts + Mean + Gr
+            int colCount = 3 + subjIds.size() * 3 + 4;
+            PdfPTable table = new PdfPTable(colCount);
+            table.setWidthPercentage(100);
+            float[] widths = new float[colCount];
+            widths[0] = 1.5f; // #
+            widths[1] = 3f;   // Adm
+            widths[2] = 5f;   // Name
+            int idx = 3;
+            for (int i = 0; i < subjIds.size(); i++) {
+                widths[idx++] = 1.8f; // Scr
+                widths[idx++] = 1.5f; // Dev
+                widths[idx++] = 1.2f; // Pos
+            }
+            widths[idx++] = 2f; // T.Mks
+            widths[idx++] = 1.5f; // Pts
+            widths[idx++] = 1.5f; // Mean
+            widths[idx] = 1.2f; // Gr
+            try { table.setWidths(widths); } catch (Exception ignored) {}
+
+            Font hf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7, Color.WHITE);
+            Color headerBg = new Color(26, 35, 126);
+
+            // Header row
+            PdfPCell hCell = new PdfPCell(new Phrase("#", hf));
+            hCell.setBackgroundColor(headerBg); hCell.setPadding(3); table.addCell(hCell);
+            hCell = new PdfPCell(new Phrase("Adm", hf));
+            hCell.setBackgroundColor(headerBg); hCell.setPadding(3); table.addCell(hCell);
+            hCell = new PdfPCell(new Phrase("Name", hf));
+            hCell.setBackgroundColor(headerBg); hCell.setPadding(3); table.addCell(hCell);
+
+            for (String code : subjCodes) {
+                String label = code.length() > 5 ? code.substring(0, 5) : code;
+                PdfPCell sc = new PdfPCell(new Phrase(label, hf));
+                sc.setBackgroundColor(headerBg); sc.setPadding(3); table.addCell(sc);
+                PdfPCell dc = new PdfPCell(new Phrase("Dev", hf));
+                dc.setBackgroundColor(headerBg); dc.setPadding(3); table.addCell(dc);
+                PdfPCell pc = new PdfPCell(new Phrase("Pos", hf));
+                pc.setBackgroundColor(headerBg); pc.setPadding(3); table.addCell(pc);
+            }
+
+            for (String agg : new String[]{"T.Mks", "Pts", "Mean", "Gr"}) {
+                PdfPCell ac = new PdfPCell(new Phrase(agg, hf));
+                ac.setBackgroundColor(headerBg); ac.setPadding(3); table.addCell(ac);
+            }
+
+            // Fetch data
+            String filterCol = groupBy.equals("stream") ? "stream" : "form";
+            String dataSql = "SELECT s.id, s.admission_number, s.full_name, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + filterCol + " = ? ORDER BY s.id, m.subject_id";
+            Map<Long, String[]> studentInfo = new LinkedHashMap<>(); // id -> [adm, name]
+            Map<Long, Map<Long, Double>> scores = new HashMap<>();
+            Map<Long, Map<Long, Integer>> points = new HashMap<>();
+            List<Long> studentOrder = new ArrayList<>();
+
+            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(dataSql)) {
+                ps.setLong(1, examId); ps.setString(2, groupValue);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    long sid = rs.getLong("id");
+                    if (!studentInfo.containsKey(sid)) {
+                        studentInfo.put(sid, new String[]{rs.getString("admission_number"), rs.getString("full_name")});
+                        studentOrder.add(sid);
+                    }
+                    long subjId = rs.getLong("subject_id");
+                    if (!rs.wasNull()) {
+                        scores.computeIfAbsent(sid, k -> new HashMap<>()).put(subjId, rs.getDouble("score"));
+                        points.computeIfAbsent(sid, k -> new HashMap<>()).put(subjId, rs.getInt("points_achieved"));
+                    }
+                }
+            }
+
+            // Subject means
+            Map<Long, Double> means = new HashMap<>();
+            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement("SELECT subject_id, AVG(score) AS m FROM marks WHERE exam_id = ? GROUP BY subject_id")) {
+                ps.setLong(1, examId);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) means.put(rs.getLong("subject_id"), rs.getDouble("m"));
+            }
+
+            // Subject positions
+            Map<Long, Map<Long, Integer>> subjectPositions = new HashMap<>();
+            Map<Long, List<Map.Entry<Long, Double>>> subjScoreList = new HashMap<>();
+            for (var se : scores.entrySet()) {
+                long sid = se.getKey();
+                for (var sse : se.getValue().entrySet())
+                    subjScoreList.computeIfAbsent(sse.getKey(), k -> new ArrayList<>()).add(Map.entry(sid, sse.getValue()));
+            }
+            for (var entry : subjScoreList.entrySet()) {
+                long subjId = entry.getKey();
+                var list = entry.getValue();
+                list.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+                int r = 1;
+                double prev = Double.MAX_VALUE;
+                for (int i = 0; i < list.size(); i++) {
+                    var e = list.get(i);
+                    if (e.getValue() < prev) r = i + 1;
+                    prev = e.getValue();
+                    subjectPositions.computeIfAbsent(subjId, k -> new HashMap<>()).put(e.getKey(), r);
+                }
+            }
+
+            // Compute totals & sort
+            record StudentRankData(long id, String adm, String name, double totalMarks, int totalPts) {}
+            List<StudentRankData> ranked = new ArrayList<>();
+            for (long sid : studentOrder) {
+                var sMap = scores.getOrDefault(sid, Collections.emptyMap());
+                double tMarks = sMap.values().stream().mapToDouble(v -> v).sum();
+                var pMap = points.getOrDefault(sid, Collections.emptyMap());
+                int tPts = pMap.values().stream().mapToInt(v -> v).sum();
+                ranked.add(new StudentRankData(sid, studentInfo.get(sid)[0], studentInfo.get(sid)[1], tMarks, tPts));
+            }
+            ranked.sort((a, b) -> Integer.compare(b.totalPts, a.totalPts));
+            int rank = 0, prevPts = Integer.MAX_VALUE;
+            for (int i = 0; i < ranked.size(); i++) {
+                StudentRankData rd = ranked.get(i);
+                if (rd.totalPts < prevPts) rank = i + 1;
+                prevPts = rd.totalPts;
+
+                Font rf = FontFactory.getFont(FontFactory.HELVETICA, 7);
+                table.addCell(new Phrase(String.valueOf(rank), rf));
+                table.addCell(new Phrase(rd.adm, rf));
+                table.addCell(new Phrase(rd.name, rf));
+
+                for (long subjId : subjIds) {
+                    double score = scores.getOrDefault(rd.id, Collections.emptyMap()).getOrDefault(subjId, 0.0);
+                    double mean = means.getOrDefault(subjId, 0.0);
+                    double dev = Math.round((score - mean) * 10.0) / 10.0;
+                    int pos = subjectPositions.getOrDefault(subjId, Collections.emptyMap()).getOrDefault(rd.id, 0);
+
+                    table.addCell(new Phrase(score > 0 ? String.valueOf(score) : "-", rf));
+                    table.addCell(new Phrase(dev != 0 ? String.valueOf(dev) : "0", rf));
+                    table.addCell(new Phrase(pos > 0 ? String.valueOf(pos) : "-", rf));
+                }
+
+                int subjCount = scores.getOrDefault(rd.id, Collections.emptyMap()).size();
+                double meanPts = subjCount > 0 ? Math.round((double) rd.totalPts / subjCount * 10.0) / 10.0 : 0;
+                String grade = meanPts >= 12 ? "A" : meanPts >= 11 ? "A-" : meanPts >= 10 ? "B+" : meanPts >= 9 ? "B" : meanPts >= 8 ? "B-" : meanPts >= 7 ? "C+" : meanPts >= 6 ? "C" : meanPts >= 5 ? "C-" : meanPts >= 4 ? "D+" : meanPts >= 3 ? "D" : meanPts >= 2 ? "D-" : "E";
+
+                table.addCell(new Phrase(String.valueOf(rd.totalMarks), rf));
+                table.addCell(new Phrase(String.valueOf(rd.totalPts), rf));
+                table.addCell(new Phrase(String.valueOf(meanPts), rf));
+                table.addCell(new Phrase(grade, rf));
+            }
 
             doc.add(table);
             doc.close();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to generate group report", e);
+            throw new RuntimeException("Failed to generate merit list", e);
         }
     }
 
