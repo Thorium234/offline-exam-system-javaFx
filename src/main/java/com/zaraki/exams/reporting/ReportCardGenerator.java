@@ -390,6 +390,98 @@ public class ReportCardGenerator {
         doc.add(container);
     }
 
+    public void generateGroupReport(long examId, String groupBy, String groupValue, Path outputPath) {
+        Document doc = new Document(PageSize.A4.rotate(), 24, 24, 30, 30);
+        try {
+            PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
+            doc.open();
+
+            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16, Color.BLUE);
+            Paragraph title = new Paragraph("THORIUM EXAM ANALYSIS SYSTEM", titleFont);
+            title.setAlignment(Element.ALIGN_CENTER);
+            doc.add(title);
+
+            String examSql = "SELECT academic_year, term, exam_series FROM exams WHERE id = ?";
+            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(examSql)) {
+                ps.setLong(1, examId);
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    Font sf = FontFactory.getFont(FontFactory.HELVETICA, 11);
+                    String examInfo = rs.getString("academic_year") + " - " + rs.getString("term") + " - " + rs.getString("exam_series");
+                    String groupLabel = groupBy.equals("stream") ? "Stream: " + groupValue : "Form: " + groupValue;
+                    Paragraph info = new Paragraph("Exam: " + examInfo + "   |   " + groupLabel, sf);
+                    info.setAlignment(Element.ALIGN_CENTER);
+                    doc.add(info);
+                    doc.add(Chunk.NEWLINE);
+                }
+            }
+
+            PdfPTable table = new PdfPTable(8);
+            table.setWidthPercentage(100);
+            String[] headers = {"#", "Admission", "Name", "Stream", "Marks", "Pts", "Mean", "Grade"};
+            Font hf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.WHITE);
+            for (String h : headers) {
+                PdfPCell c = new PdfPCell(new Phrase(h, hf));
+                c.setBackgroundColor(new Color(26, 35, 126));
+                c.setPadding(4);
+                table.addCell(c);
+            }
+
+            String filterCol = groupBy.equals("stream") ? "s.stream = ?" : "s.form = ?";
+            String dataSql = """
+                SELECT s.admission_number, s.full_name, s.stream, s.form,
+                       ROUND(SUM(m.score), 1) AS total_marks,
+                       COALESCE(SUM(m.points_achieved), 0) AS total_points,
+                       ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points,
+                       CASE WHEN AVG(m.points_achieved) >= 12 THEN 'A'
+                            WHEN AVG(m.points_achieved) >= 11 THEN 'A-'
+                            WHEN AVG(m.points_achieved) >= 10 THEN 'B+'
+                            WHEN AVG(m.points_achieved) >= 9  THEN 'B'
+                            WHEN AVG(m.points_achieved) >= 8  THEN 'B-'
+                            WHEN AVG(m.points_achieved) >= 7  THEN 'C+'
+                            WHEN AVG(m.points_achieved) >= 6  THEN 'C'
+                            WHEN AVG(m.points_achieved) >= 5  THEN 'C-'
+                            WHEN AVG(m.points_achieved) >= 4  THEN 'D+'
+                            WHEN AVG(m.points_achieved) >= 3  THEN 'D'
+                            WHEN AVG(m.points_achieved) >= 2  THEN 'D-'
+                            ELSE 'E'
+                       END AS mean_grade
+                FROM marks m
+                JOIN students s ON s.id = m.student_id
+                WHERE m.exam_id = ? AND """ + filterCol + """
+                GROUP BY s.id
+                ORDER BY total_points DESC
+                """;
+            try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(dataSql)) {
+                ps.setLong(1, examId);
+                ps.setString(2, groupValue);
+                ResultSet rs = ps.executeQuery();
+                Font rf = FontFactory.getFont(FontFactory.HELVETICA, 9);
+                int rank = 0, prevPts = Integer.MAX_VALUE, total = 0;
+                while (rs.next()) {
+                    total++;
+                    int pts = rs.getInt("total_points");
+                    if (pts < prevPts) rank = total;
+                    prevPts = pts;
+
+                    table.addCell(new Phrase(String.valueOf(rank), rf));
+                    table.addCell(new Phrase(rs.getString("admission_number"), rf));
+                    table.addCell(new Phrase(rs.getString("full_name"), rf));
+                    table.addCell(new Phrase(rs.getString("stream"), rf));
+                    table.addCell(new Phrase(String.valueOf(rs.getDouble("total_marks")), rf));
+                    table.addCell(new Phrase(String.valueOf(pts), rf));
+                    table.addCell(new Phrase(String.valueOf(rs.getDouble("mean_points")), rf));
+                    table.addCell(new Phrase(rs.getString("mean_grade"), rf));
+                }
+            } catch (SQLException e) { throw new RuntimeException(e); }
+
+            doc.add(table);
+            doc.close();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate group report", e);
+        }
+    }
+
     private void addPerformanceIndicator(Document doc, long examId, long studentId) throws DocumentException {
         String sql = """
             SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points
