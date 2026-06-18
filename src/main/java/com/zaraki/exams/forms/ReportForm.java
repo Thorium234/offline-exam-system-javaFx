@@ -31,11 +31,13 @@ public class ReportForm {
     private final Stage stage;
 
     private final ComboBox<String> examBox = new ComboBox<>();
-    private final ComboBox<String> studentBox = new ComboBox<>();
+    private final TextField searchField = new TextField();
+    private final Label foundStudentLabel = new Label();
     private final ComboBox<String> streamBox = new ComboBox<>();
     private final ComboBox<String> formBox = new ComboBox<>();
     private long selectedExamId;
-    private long selectedStudentId;
+    private long foundStudentId = -1;
+    private boolean studentFound = false;
 
     private VBox previewBox;
     private Label statusLabel;
@@ -48,53 +50,54 @@ public class ReportForm {
 
     public VBox getView() {
         VBox view = new VBox(15);
-        Label header = new Label("Reports - Individual Report Cards");
+        Label header = new Label("Reports — Report Cards");
         header.setFont(Font.font("System", FontWeight.BOLD, 24));
 
-        Label info = new Label("Generate individual student report cards. Each student on a separate A4 page.");
+        Label info = new Label("Generate report cards. Each student on a separate A4 page.");
         info.setFont(Font.font("System", 13));
         info.setTextFill(Color.gray(0.5));
 
         loadExams(examBox);
+        loadStreams(streamBox);
+        loadForms(formBox);
 
-        // Individual student section
-        Label singleLabel = new Label("Single Student Report");
+        // ── Exam ──
+        HBox examRow = new HBox(10, new Label("Exam:"), examBox);
+        examBox.setPrefWidth(400);
+
+        // ── Single student section ──
+        Label singleLabel = new Label("Single Student");
         singleLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
 
-        HBox examRow = new HBox(10, new Label("Exam:"), examBox);
-        loadStudents(studentBox);
+        HBox searchRow = new HBox(10);
+        searchField.setPromptText("Search by Admission No. or Name");
+        searchField.setPrefWidth(350);
+        Button searchBtn = new Button("Search");
+        Button genOneBtn = new Button("Generate PDF");
+        foundStudentLabel.setFont(Font.font("System", 12));
+        foundStudentLabel.setTextFill(Color.web(PRIMARY));
+        searchRow.getChildren().addAll(searchField, searchBtn, genOneBtn);
 
-        HBox studentRow = new HBox(10, new Label("Student:"), studentBox);
-        studentBox.setPrefWidth(400);
-
-        HBox singleBtnRow = new HBox(10);
-        Button previewBtn = new Button("Preview");
-        Button genPdfBtn = new Button("Generate PDF");
-        ProgressIndicator spinner = new ProgressIndicator();
-        spinner.setVisible(false);
-        spinner.setPrefSize(24, 24);
-        singleBtnRow.getChildren().addAll(previewBtn, genPdfBtn, spinner);
-
-        // Bulk generate section
+        // ── Bulk section ──
         Separator sep = new Separator();
-        Label bulkLabel = new Label("Bulk Generate — Report Cards for All Students in a Class");
+        Label bulkLabel = new Label("Generate for Stream / Form (multi-page PDF)");
         bulkLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
 
         HBox bulkRow = new HBox(10);
-        loadStreams(streamBox);
-        loadForms(formBox);
-        Label streamLabel = new Label("Stream:");
-        Label formLabel = new Label("Form:");
         streamBox.setPrefWidth(200);
         formBox.setPrefWidth(100);
-        Button bulkGenBtn = new Button("Generate Bulk PDF");
-        bulkRow.getChildren().addAll(streamLabel, streamBox, formLabel, formBox, bulkGenBtn);
+        Button bulkGenBtn = new Button("Generate PDF for All");
+        bulkRow.getChildren().addAll(new Label("Stream:"), streamBox, new Label(" Form:"), formBox, bulkGenBtn);
+
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setVisible(false);
+        spinner.setPrefSize(24, 24);
 
         statusLabel = new Label();
         statusLabel.setFont(Font.font("System", 13));
         statusLabel.setTextFill(Color.gray(0.4));
 
-        // Preview area
+        // Preview
         previewBox = new VBox(10);
         previewBox.setPadding(new Insets(15));
         previewBox.setStyle("-fx-background-color: white; -fx-background-radius: 8; "
@@ -107,39 +110,23 @@ public class ReportForm {
         previewScroll.setStyle("-fx-background-color: transparent;");
         previewScroll.setVisible(false);
 
-        view.getChildren().addAll(header, info, examRow, singleLabel, studentRow, singleBtnRow,
-            sep, bulkLabel, bulkRow, statusLabel, previewScroll);
+        view.getChildren().addAll(header, info, examRow,
+            singleLabel, searchRow, foundStudentLabel,
+            sep, bulkLabel, bulkRow, spinner, statusLabel, previewScroll);
 
-        // Preview single student
-        previewBtn.setOnAction(e -> {
-            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
-            if (studentBox.getValue() == null) { showAlert("Select a student."); return; }
-            selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            selectedStudentId = Long.parseLong(studentBox.getValue().split(" - ")[0]);
-            spinner.setVisible(true);
-            statusLabel.setText("Loading preview...");
-            Task<Void> task = new Task<>() {
-                @Override protected Void call() { return null; }
-            };
-            task.setOnSucceeded(ev -> {
-                loadIndividualPreview(selectedExamId, selectedStudentId);
-                spinner.setVisible(false);
-                previewScroll.setVisible(true);
-                statusLabel.setText("Preview ready.");
-            });
-            new Thread(task).start();
-        });
+        // ── Search student ──
+        searchBtn.setOnAction(e -> searchStudent());
+        searchField.setOnAction(e -> searchStudent());
 
-        // Generate single PDF
-        genPdfBtn.setOnAction(e -> {
+        // ── Generate single PDF ──
+        genOneBtn.setOnAction(e -> {
             if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
-            if (studentBox.getValue() == null) { showAlert("Select a student."); return; }
+            if (!studentFound) { showAlert("Search and select a student first."); return; }
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            long studentId = Long.parseLong(studentBox.getValue().split(" - ")[0]);
 
             FileChooser fc = new FileChooser();
             fc.setTitle("Save Report Card");
-            fc.setInitialFileName("report_card.pdf");
+            fc.setInitialFileName("report_card_" + foundStudentLabel.getText().split(" - ")[0].trim() + ".pdf");
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
             File file = fc.showSaveDialog(stage);
             if (file == null) return;
@@ -148,7 +135,7 @@ public class ReportForm {
             statusLabel.setText("Generating PDF...");
             Task<Void> task = new Task<>() {
                 @Override protected Void call() {
-                    reportGenerator.generateStudentReport(examId, studentId, file.toPath());
+                    reportGenerator.generateStudentReport(examId, foundStudentId, file.toPath());
                     return null;
                 }
             };
@@ -157,27 +144,38 @@ public class ReportForm {
             new Thread(task).start();
         });
 
-        // Generate bulk PDF
+        // ── Search result click → show preview ──
+        foundStudentLabel.setOnMouseClicked(e -> {
+            if (!studentFound || examBox.getValue() == null) return;
+            selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            spinner.setVisible(true);
+            statusLabel.setText("Loading preview...");
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() { return null; }
+            };
+            task.setOnSucceeded(ev -> {
+                loadIndividualPreview(selectedExamId, foundStudentId);
+                spinner.setVisible(false);
+                previewScroll.setVisible(true);
+                statusLabel.setText("Preview ready.");
+            });
+            new Thread(task).start();
+        });
+
+        // ── Generate bulk PDF ──
         bulkGenBtn.setOnAction(e -> {
             if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
-            String groupBy;
-            String groupValue;
+            String groupBy, groupValue;
             if (streamBox.getValue() != null && !streamBox.getValue().isBlank()) {
-                groupBy = "stream";
-                groupValue = streamBox.getValue();
+                groupBy = "stream"; groupValue = streamBox.getValue();
             } else if (formBox.getValue() != null && !formBox.getValue().isBlank()) {
-                groupBy = "form";
-                groupValue = formBox.getValue();
-            } else {
-                showAlert("Select a stream or form.");
-                return;
-            }
+                groupBy = "form"; groupValue = formBox.getValue();
+            } else { showAlert("Select a stream or form."); return; }
 
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
             FileChooser fc = new FileChooser();
             fc.setTitle("Save Bulk Report Cards");
-            String fileName = "report_cards_" + groupBy + "_" + groupValue.replace("/", "_") + ".pdf";
-            fc.setInitialFileName(fileName);
+            fc.setInitialFileName("report_cards_" + groupBy + "_" + groupValue.replace("/", "_") + ".pdf");
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
             File file = fc.showSaveDialog(stage);
             if (file == null) return;
@@ -190,7 +188,7 @@ public class ReportForm {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Saved: " + file.getName() + " (each student on own page)"); showInfo("Bulk report saved."); });
+            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Saved: " + file.getName() + " (" + groupValue + ")"); showInfo("Bulk report saved."); });
             task.setOnFailed(ev -> { spinner.setVisible(false); statusLabel.setText("Failed."); showAlert(task.getException().getMessage()); });
             new Thread(task).start();
         });
@@ -198,7 +196,52 @@ public class ReportForm {
         return view;
     }
 
-    // ─────────── Individual preview ───────────
+    private void searchStudent() {
+        String q = searchField.getText().trim();
+        if (q.isEmpty()) { showAlert("Enter a name or admission number."); return; }
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT id, admission_number, full_name, form, stream FROM students WHERE full_name LIKE ? OR admission_number LIKE ? LIMIT 20")) {
+            String like = "%" + q + "%";
+            ps.setString(1, like);
+            ps.setString(2, like);
+            ResultSet rs = ps.executeQuery();
+
+            if (!rs.next()) {
+                foundStudentLabel.setText("No student found.");
+                studentFound = false;
+                return;
+            }
+
+            long id = rs.getLong("id");
+            String adm = rs.getString("admission_number");
+            String name = rs.getString("full_name");
+            int form = rs.getInt("form");
+            String stream = rs.getString("stream");
+
+            boolean multiple = false;
+            if (rs.next()) {
+                multiple = true;
+                StringBuilder sb = new StringBuilder("Multiple found, showing first:\n");
+                sb.append(id).append(" - ").append(adm).append(" - ").append(name).append(" (Form ").append(form).append(" ").append(stream).append(")\n");
+                do {
+                    sb.append(rs.getLong("id")).append(" - ").append(rs.getString("admission_number")).append(" - ").append(rs.getString("full_name")).append(" (Form ").append(rs.getInt("form")).append(" ").append(rs.getString("stream")).append(")\n");
+                } while (rs.next());
+                foundStudentLabel.setText(sb.toString());
+            }
+
+            if (!multiple) {
+                foundStudentLabel.setText(adm + " - " + name + " (Form " + form + " " + stream + ") — click to preview");
+                foundStudentId = id;
+                studentFound = true;
+            } else {
+                foundStudentId = id;
+                studentFound = true;
+            }
+        } catch (SQLException e) { showAlert(e.getMessage()); }
+    }
+
+    // ─────────── Preview ───────────
 
     private void loadIndividualPreview(long examId, long studentId) {
         previewBox.getChildren().clear();
@@ -303,7 +346,6 @@ public class ReportForm {
                 summary.getChildren().add(new Label("Total Marks: " + rs.getDouble("total_marks") + " | Total Points: " + rs.getInt("total_points") + " | Mean Points: " + rs.getDouble("mean_points")));
         } catch (SQLException e) { showAlert(e.getMessage()); }
 
-        // Performance indicator
         String trendSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m WHERE m.exam_id = ? AND m.student_id = ?";
         String prevSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m JOIN exams e ON e.id = m.exam_id WHERE m.student_id = ? AND e.academic_year = (SELECT academic_year FROM exams WHERE id = ?) AND e.id < ? ORDER BY e.id DESC LIMIT 1";
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(trendSql); PreparedStatement pps = conn.prepareStatement(prevSql)) {
@@ -326,7 +368,6 @@ public class ReportForm {
 
         previewBox.getChildren().add(summary);
 
-        // Trend chart
         NumberAxis tx = new NumberAxis(); tx.setLabel("Exam #"); tx.setTickUnit(1); tx.setForceZeroInRange(false);
         NumberAxis ty = new NumberAxis(); ty.setLabel("Total Points"); ty.setForceZeroInRange(false);
         LineChart<Number, Number> trendChart = new LineChart<>(tx, ty);
@@ -364,15 +405,6 @@ public class ReportForm {
             while (rs.next())
                 box.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
                     + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void loadStudents(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, admission_number, full_name FROM students ORDER BY full_name")) {
-            while (rs.next())
-                box.getItems().add(rs.getLong("id") + " - " + rs.getString("admission_number") + " - " + rs.getString("full_name"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }
 
