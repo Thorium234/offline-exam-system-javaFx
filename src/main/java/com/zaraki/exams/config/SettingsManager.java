@@ -17,6 +17,11 @@ public class SettingsManager {
         try (Statement st = db.getConnection().createStatement()) {
             st.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)");
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('curriculum', 'SYSTEM_844')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('school_name', 'Kenya Secondary School')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('closing_date', '')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('opening_date', '')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('logo_path', '')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('stamp_path', '')");
         } catch (SQLException e) {
             throw new RuntimeException("Failed to init settings", e);
         }
@@ -33,12 +38,41 @@ public class SettingsManager {
     }
 
     public void setCurriculum(CurriculumSystem system) {
+        set("curriculum", system.name());
+    }
+
+    public String getSchoolName() { return get("school_name", "Kenya Secondary School"); }
+    public void setSchoolName(String v) { set("school_name", v); }
+
+    public String getClosingDate() { return get("closing_date", ""); }
+    public void setClosingDate(String v) { set("closing_date", v); }
+
+    public String getOpeningDate() { return get("opening_date", ""); }
+    public void setOpeningDate(String v) { set("opening_date", v); }
+
+    public String getLogoPath() { return get("logo_path", ""); }
+    public void setLogoPath(String v) { set("logo_path", v); }
+
+    public String getStampPath() { return get("stamp_path", ""); }
+    public void setStampPath(String v) { set("stamp_path", v); }
+
+    private String get(String key, String def) {
+        try (PreparedStatement ps = db.getConnection().prepareStatement("SELECT value FROM app_settings WHERE key = ?")) {
+            ps.setString(1, key);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) { String v = rs.getString("value"); return v != null ? v : def; }
+            return def;
+        } catch (SQLException e) { return def; }
+    }
+
+    private void set(String key, String value) {
         try (PreparedStatement ps = db.getConnection()
-                .prepareStatement("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('curriculum', ?)")) {
-            ps.setString(1, system.name());
+                .prepareStatement("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)")) {
+            ps.setString(1, key);
+            ps.setString(2, value);
             ps.executeUpdate();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to save curriculum setting", e);
+            throw new RuntimeException("Failed to save setting: " + key, e);
         }
     }
 }

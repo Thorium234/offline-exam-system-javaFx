@@ -115,7 +115,7 @@ public class MarksEntryForm {
             Double newVal = e.getNewValue();
             if (newVal != null && newVal >= 0) {
                 row.score = newVal;
-                String result = analysisService.determineGradeAndPoints(newVal, selectedSubjectId);
+                String result = analysisService.determineGradeAndPoints(newVal, selectedSubjectId, selectedExamId);
                 String[] parts = result.split("\\|");
                 row.grade = parts[0];
                 row.points = Integer.parseInt(parts[1]);

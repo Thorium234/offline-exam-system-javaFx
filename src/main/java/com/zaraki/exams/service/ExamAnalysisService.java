@@ -248,6 +248,7 @@ public class ExamAnalysisService {
             SELECT m.exam_id, m.student_id, m.subject_id, m.score
             FROM marks m WHERE m.exam_id = ? AND (m.grade_achieved IS NULL OR m.points_achieved IS NULL)
             """;
+        String outOfSql = "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?";
         String gradeSql = """
             SELECT grade, points FROM grading_scales
             WHERE (subject_id IS NULL OR subject_id = ?)
@@ -259,6 +260,7 @@ public class ExamAnalysisService {
 
         try (Connection conn = db.getConnection();
              PreparedStatement fetchPs = conn.prepareStatement(fetchSql);
+             PreparedStatement outOfPs = conn.prepareStatement(outOfSql);
              PreparedStatement gradePs = conn.prepareStatement(gradeSql);
              PreparedStatement updatePs = conn.prepareStatement(updateSql)) {
 
@@ -273,8 +275,17 @@ public class ExamAnalysisService {
                     long subjId = rs.getLong("subject_id");
                     double score = rs.getDouble("score");
 
+                    double normalizedScore = score;
+                    outOfPs.setLong(1, eId);
+                    outOfPs.setLong(2, subjId);
+                    ResultSet oo = outOfPs.executeQuery();
+                    if (oo.next()) {
+                        int outOf = oo.getInt("out_of");
+                        if (outOf > 0 && outOf != 100) normalizedScore = (score / outOf) * 100;
+                    }
+
                     gradePs.setLong(1, subjId);
-                    gradePs.setDouble(2, score);
+                    gradePs.setDouble(2, normalizedScore);
                     ResultSet gr = gradePs.executeQuery();
                     String grade = null;
                     int points = 0;
@@ -417,7 +428,8 @@ public class ExamAnalysisService {
         }
     }
 
-    public String determineGradeAndPoints(double score, Long subjectId) {
+    public String determineGradeAndPoints(double score, Long subjectId, Long examId) {
+        double normalizedScore = normalizeByOutOf(score, subjectId, examId);
         String sql = """
             SELECT grade, points FROM grading_scales
             WHERE (subject_id IS NULL OR subject_id = ?)
@@ -429,7 +441,7 @@ public class ExamAnalysisService {
              PreparedStatement ps = conn.prepareStatement(sql)) {
             if (subjectId != null) ps.setLong(1, subjectId);
             else ps.setNull(1, Types.INTEGER);
-            ps.setDouble(2, score);
+            ps.setDouble(2, normalizedScore);
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 return rs.getString("grade") + "|" + rs.getInt("points");
@@ -437,6 +449,24 @@ public class ExamAnalysisService {
             return "E|0";
         } catch (SQLException e) {
             throw new RuntimeException("Failed to determine grade", e);
+        }
+    }
+
+    public double normalizeByOutOf(double score, Long subjectId, Long examId) {
+        if (examId == null || subjectId == null) return score;
+        String sql = "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                int outOf = rs.getInt("out_of");
+                if (outOf > 0 && outOf != 100) return (score / outOf) * 100;
+            }
+            return score;
+        } catch (SQLException e) {
+            return score;
         }
     }
 }

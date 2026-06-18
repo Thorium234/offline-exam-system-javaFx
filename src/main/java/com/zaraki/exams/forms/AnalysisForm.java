@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
@@ -65,6 +66,7 @@ public class AnalysisForm {
         rankBtn.setOnAction(e -> {
             if (examBox.getValue() == null) return;
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            if (!PublishForm.isExamReleased(examId)) { showAlert("Exam not released by admin. Analysis unavailable."); return; }
             spinner.setVisible(true);
             computeAllTabs(examId);
         });

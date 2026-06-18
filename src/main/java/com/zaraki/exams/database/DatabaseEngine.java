@@ -103,9 +103,33 @@ public class DatabaseEngine {
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
                     academic_year TEXT    NOT NULL,
                     term          TEXT    NOT NULL CHECK(term IN ('Term 1', 'Term 2', 'Term 3')),
-                    exam_series   TEXT    NOT NULL
+                    exam_series   TEXT    NOT NULL,
+                    released      INTEGER NOT NULL DEFAULT 0,
+                    released_by   TEXT,
+                    released_at   TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_exams_year_term ON exams(academic_year, term);
+            """);
+            try { stmt.execute("ALTER TABLE exams ADD COLUMN released INTEGER NOT NULL DEFAULT 0"); } catch (SQLException ignored) {}
+            try { stmt.execute("ALTER TABLE exams ADD COLUMN released_by TEXT"); } catch (SQLException ignored) {}
+            try { stmt.execute("ALTER TABLE exams ADD COLUMN released_at TEXT"); } catch (SQLException ignored) {}
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS exam_subjects (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exam_id      INTEGER NOT NULL,
+                    subject_id   INTEGER NOT NULL,
+                    out_of       INTEGER NOT NULL DEFAULT 100,
+                    uploaded_by  TEXT,
+                    uploaded_at  TEXT,
+                    published    INTEGER NOT NULL DEFAULT 0,
+                    published_by TEXT,
+                    published_at TEXT,
+                    FOREIGN KEY (exam_id)    REFERENCES exams(id),
+                    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+                    UNIQUE(exam_id, subject_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_exam_subjects_exam ON exam_subjects(exam_id);
             """);
 
             boolean usersExists = false;

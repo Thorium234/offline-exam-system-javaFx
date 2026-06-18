@@ -1,6 +1,8 @@
 package com.zaraki.exams.forms;
 
+import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.reporting.ReportCardGenerator;
 import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
@@ -121,8 +123,9 @@ public class ReportForm {
         // ── Generate single PDF ──
         genOneBtn.setOnAction(e -> {
             if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
-            if (!studentFound) { showAlert("Search and select a student first."); return; }
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            if (!isExamReleased(examId)) { showAlert("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
+            if (!studentFound) { showAlert("Search and select a student first."); return; }
 
             FileChooser fc = new FileChooser();
             fc.setTitle("Save Report Card");
@@ -148,6 +151,7 @@ public class ReportForm {
         foundStudentLabel.setOnMouseClicked(e -> {
             if (!studentFound || examBox.getValue() == null) return;
             selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            if (!isExamReleased(selectedExamId)) { showAlert("Exam not released by admin. Preview unavailable."); return; }
             spinner.setVisible(true);
             statusLabel.setText("Loading preview...");
             Task<Void> task = new Task<>() {
@@ -165,14 +169,14 @@ public class ReportForm {
         // ── Generate bulk PDF ──
         bulkGenBtn.setOnAction(e -> {
             if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+            long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            if (!isExamReleased(examId)) { showAlert("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
             String groupBy, groupValue;
             if (streamBox.getValue() != null && !streamBox.getValue().isBlank()) {
                 groupBy = "stream"; groupValue = streamBox.getValue();
             } else if (formBox.getValue() != null && !formBox.getValue().isBlank()) {
                 groupBy = "form"; groupValue = formBox.getValue();
             } else { showAlert("Select a stream or form."); return; }
-
-            long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
             FileChooser fc = new FileChooser();
             fc.setTitle("Save Bulk Report Cards");
             fc.setInitialFileName("report_cards_" + groupBy + "_" + groupValue.replace("/", "_") + ".pdf");
@@ -246,13 +250,15 @@ public class ReportForm {
     private void loadIndividualPreview(long examId, long studentId) {
         previewBox.getChildren().clear();
 
+        String schoolName = new SettingsManager().getSchoolName();
+
         Label title = new Label("THORIUM EXAM ANALYSIS SYSTEM");
         title.setFont(Font.font("System", FontWeight.BOLD, 16));
         title.setTextFill(Color.web(PRIMARY));
         title.setAlignment(Pos.CENTER);
         title.setMaxWidth(Double.MAX_VALUE);
 
-        Label schoolLabel = new Label("Official Report Form - Kenya Secondary School");
+        Label schoolLabel = new Label("Official Report Form - " + schoolName);
         schoolLabel.setFont(Font.font("System", 12));
         schoolLabel.setAlignment(Pos.CENTER);
         schoolLabel.setMaxWidth(Double.MAX_VALUE);
@@ -424,6 +430,12 @@ public class ReportForm {
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }
 
-    private void showAlert(String msg) { Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait()); }
+    private void showAlert(String msg) {
+        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
+    }
+
+    private static boolean isExamReleased(long examId) {
+        return PublishForm.isExamReleased(examId);
+    }
     private void showInfo(String msg) { Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait()); }
 }

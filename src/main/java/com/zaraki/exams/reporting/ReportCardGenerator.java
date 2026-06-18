@@ -3,6 +3,7 @@ package com.zaraki.exams.reporting;
 import com.lowagie.text.*;
 import com.lowagie.text.Font;
 import com.lowagie.text.pdf.*;
+import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
 
 import java.awt.*;
@@ -27,10 +28,46 @@ public class ReportCardGenerator {
         this.db = DatabaseEngine.getInstance();
     }
 
+    static {
+        SettingsManager sm = new SettingsManager();
+        String logoPath = sm.getLogoPath();
+        if (logoPath != null && !logoPath.isBlank()) {
+            try { backgroundLogo = com.lowagie.text.Image.getInstance(logoPath); }
+            catch (Exception ignored) {}
+        }
+    }
+
+    private static com.lowagie.text.Image backgroundLogo;
+
+    private static class LogoBackground extends PdfPageEventHelper {
+        @Override
+        public void onStartPage(PdfWriter writer, Document doc) {
+            if (backgroundLogo == null) return;
+            try {
+                PdfContentByte cb = writer.getDirectContentUnder();
+                float pageW = doc.getPageSize().getWidth();
+                float pageH = doc.getPageSize().getHeight();
+                float scale = Math.min(pageW / backgroundLogo.getWidth(), pageH / backgroundLogo.getHeight()) * 0.4f;
+                backgroundLogo.scalePercent(scale * 100);
+                float x = (pageW - backgroundLogo.getScaledWidth()) / 2;
+                float y = (pageH - backgroundLogo.getScaledHeight()) / 2;
+                cb.saveState();
+                PdfGState gs = new PdfGState();
+                gs.setFillOpacity(0.08f);
+                cb.setGState(gs);
+                cb.addImage(backgroundLogo, backgroundLogo.getScaledWidth(), 0, 0, backgroundLogo.getScaledHeight(), x, y);
+                cb.restoreState();
+                // Reset scale for next use
+                backgroundLogo.scalePercent(100);
+            } catch (Exception ignored) {}
+        }
+    }
+
     public void generateStudentReport(long examId, long studentId, Path outputPath) {
         Document doc = new Document(PageSize.A4, 36, 36, 36, 36);
         try {
             PdfWriter writer = PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
+            writer.setPageEvent(new LogoBackground());
             doc.open();
 
             addHeader(doc, examId, studentId);
@@ -38,10 +75,11 @@ public class ReportCardGenerator {
             addSubjectTable(doc, examId, studentId);
             addSummary(doc, examId, studentId);
             addPerformanceIndicator(doc, examId, studentId);
-            addTrendChart(doc, writer, studentId);
+        addTrendChart(doc, writer, studentId);
+        addStamp(doc, writer);
 
-            doc.close();
-        } catch (Exception e) {
+        doc.close();
+    } catch (Exception e) {
             throw new RuntimeException("Failed to generate report card", e);
         }
     }
@@ -57,19 +95,35 @@ public class ReportCardGenerator {
                 examInfo = rs.getString("academic_year") + " - " + rs.getString("term") + " - " + rs.getString("exam_series");
             }
 
+            SettingsManager sm = new SettingsManager();
+            String schoolName = sm.getSchoolName();
+            String openingDate = sm.getOpeningDate();
+            String closingDate = sm.getClosingDate();
+
             Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, Color.BLUE);
             Paragraph title = new Paragraph("THORIUM EXAM ANALYSIS SYSTEM", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             doc.add(title);
 
             Font subFont = FontFactory.getFont(FontFactory.HELVETICA, 12);
-            Paragraph school = new Paragraph("Kenya Secondary School - Official Report Form", subFont);
+            String schoolLine = schoolName + " - Official Report Form";
+            Paragraph school = new Paragraph(schoolLine, subFont);
             school.setAlignment(Element.ALIGN_CENTER);
             doc.add(school);
 
             Paragraph exam = new Paragraph("Exam: " + examInfo, subFont);
             exam.setAlignment(Element.ALIGN_CENTER);
             doc.add(exam);
+
+            if (!openingDate.isBlank() || !closingDate.isBlank()) {
+                String termLine = "";
+                if (!openingDate.isBlank()) termLine += "Opens: " + openingDate;
+                if (!openingDate.isBlank() && !closingDate.isBlank()) termLine += "  |  ";
+                if (!closingDate.isBlank()) termLine += "Closes: " + closingDate;
+                Paragraph datesP = new Paragraph(termLine, subFont);
+                datesP.setAlignment(Element.ALIGN_CENTER);
+                doc.add(datesP);
+            }
 
             Paragraph date = new Paragraph("Generated: " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), subFont);
             date.setAlignment(Element.ALIGN_CENTER);
@@ -125,7 +179,6 @@ public class ReportCardGenerator {
 
         String sql = """
             SELECT sub.subject_name, m.score, m.grade_achieved, m.points_achieved,
-                   m.score,
                    (SELECT COUNT(DISTINCT m2.student_id) + 1 FROM marks m2
                     WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id
                       AND m2.score > m.score) AS position,
@@ -176,66 +229,26 @@ public class ReportCardGenerator {
             SELECT
                 ROUND(SUM(m.score), 1) AS total_marks,
                 COALESCE(SUM(m.points_achieved), 0) AS total_points,
-                ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points,
-                (SELECT COUNT(DISTINCT m2.student_id) FROM marks m2 WHERE m2.exam_id = ?) AS total_students,
-                (SELECT COUNT(DISTINCT m2.student_id) + 1 FROM marks m2
-                 JOIN (SELECT student_id, SUM(COALESCE(points_achieved, 0)) AS total_pts FROM marks WHERE exam_id = ? GROUP BY student_id) s2
-                 ON m2.student_id = s2.student_id
-                 WHERE m2.exam_id = ? AND s2.total_pts >
-                    (SELECT COALESCE(SUM(COALESCE(points_achieved, 0)), 0) FROM marks WHERE exam_id = ? AND student_id = ?)
-                ) AS class_rank,
-                (SELECT COUNT(DISTINCT m2.student_id) FROM marks m2
-                 JOIN students s2 ON s2.id = m2.student_id
-                 WHERE m2.exam_id = ? AND s2.stream = (SELECT stream FROM students WHERE id = ?)) AS stream_size,
-                (SELECT COUNT(DISTINCT m2.student_id) + 1 FROM marks m2
-                 JOIN students s2 ON s2.id = m2.student_id
-                 JOIN (SELECT student_id, SUM(COALESCE(points_achieved, 0)) AS total_pts FROM marks WHERE exam_id = ? GROUP BY student_id) s3
-                 ON m2.student_id = s3.student_id
-                 WHERE m2.exam_id = ? AND s2.stream = (SELECT stream FROM students WHERE id = ?)
-                   AND s3.total_pts >
-                    (SELECT COALESCE(SUM(COALESCE(points_achieved, 0)), 0) FROM marks WHERE exam_id = ? AND student_id = ?)
-                ) AS stream_rank,
-                ROUND(COALESCE(AVG(m.score), 0), 1) AS avg_score
+                ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points
             FROM marks m
             WHERE m.exam_id = ? AND m.student_id = ?
             """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, examId);
-            ps.setLong(2, examId);
-            ps.setLong(3, examId);
-            ps.setLong(4, examId);
-            ps.setLong(5, studentId);
-            ps.setLong(6, examId);
-            ps.setLong(7, studentId);
-            ps.setLong(8, examId);
-            ps.setLong(9, examId);
-            ps.setLong(10, studentId);
-            ps.setLong(11, examId);
-            ps.setLong(12, studentId);
-            ps.setLong(13, examId);
-            ps.setLong(14, studentId);
+            ps.setLong(2, studentId);
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) {
-                Font f = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
-                PdfPTable summary = new PdfPTable(4);
-                summary.setWidthPercentage(100);
-                summary.setSpacingBefore(8);
+                Font f = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.DARK_GRAY);
+                Paragraph p = new Paragraph("SUMMARY", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, new Color(26, 35, 126)));
+                p.setSpacingBefore(8);
+                doc.add(p);
 
-                summary.addCell(new Phrase("Total Marks: " + rs.getDouble("total_marks"), f));
-                summary.addCell(new Phrase("Total Points: " + rs.getInt("total_points"), f));
-                summary.addCell(new Phrase("Mean Points: " + rs.getDouble("mean_points"), f));
-                summary.addCell(new Phrase("Avg Score: " + rs.getDouble("avg_score"), f));
-
-                PdfPCell classPos = new PdfPCell(new Phrase("Class Position: " + rs.getInt("class_rank") + "/" + rs.getInt("total_students"), f));
-                PdfPCell streamPos = new PdfPCell(new Phrase("Stream Position: " + rs.getInt("stream_rank") + "/" + rs.getInt("stream_size"), f));
-                classPos.setColspan(2);
-                streamPos.setColspan(2);
-                summary.addCell(classPos);
-                summary.addCell(streamPos);
-
-                doc.add(summary);
+                String line = "Total Marks: " + rs.getDouble("total_marks")
+                    + "  |  Total Points: " + rs.getInt("total_points")
+                    + "  |  Mean Points: " + rs.getDouble("mean_points");
+                doc.add(new Paragraph(line, f));
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -270,21 +283,20 @@ public class ReportCardGenerator {
 
         PdfPTable container = new PdfPTable(1);
         container.setWidthPercentage(100);
-        container.setSpacingBefore(16);
+        container.setSpacingBefore(12);
 
-        Font chartTitleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.DARK_GRAY);
-        Paragraph chartTitle = new Paragraph("Performance Trend", chartTitleFont);
+        Paragraph chartTitle = new Paragraph("PERFORMANCE TREND", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Color.DARK_GRAY));
         chartTitle.setAlignment(Element.ALIGN_CENTER);
         PdfPCell titleCell = new PdfPCell(chartTitle);
         titleCell.setBorder(PdfPCell.NO_BORDER);
-        titleCell.setPaddingBottom(6);
+        titleCell.setPaddingBottom(4);
         container.addCell(titleCell);
 
         PdfPCell chartCell = new PdfPCell();
-        chartCell.setFixedHeight(140);
+        chartCell.setFixedHeight(150);
         chartCell.setBorder(PdfPCell.NO_BORDER);
-        chartCell.setPaddingLeft(10);
-        chartCell.setPaddingRight(10);
+        chartCell.setPaddingLeft(15);
+        chartCell.setPaddingRight(15);
 
         chartCell.setCellEvent((cell, rect, canvases) -> {
             PdfContentByte cb = canvases[PdfPTable.BASECANVAS];
@@ -292,10 +304,14 @@ public class ReportCardGenerator {
             BaseFont bf;
             try { bf = BaseFont.createFont(); } catch (Exception e) { return; }
 
-            float x0 = rect.getLeft() + 30;
-            float y0 = rect.getBottom() + 10;
-            float w = rect.getWidth() - 45;
-            float h = rect.getHeight() - 30;
+            float marginLeft = 40;
+            float marginBottom = 20;
+            float marginRight = 10;
+            float marginTop = 10;
+            float x0 = rect.getLeft() + marginLeft;
+            float y0 = rect.getBottom() + marginBottom;
+            float w = rect.getWidth() - marginLeft - marginRight;
+            float h = rect.getHeight() - marginBottom - marginTop;
 
             double minVal = values.stream().mapToDouble(v -> v).min().orElse(0);
             double maxVal = values.stream().mapToDouble(v -> v).max().orElse(1);
@@ -305,6 +321,12 @@ public class ReportCardGenerator {
             double yMin = Math.max(0, minVal - pad);
             double yMax = maxVal + pad;
             double yRange = yMax - yMin;
+
+            // --- Y-axis label ---
+            cb.beginText();
+            cb.setFontAndSize(bf, 8);
+            cb.showTextAligned(Element.ALIGN_CENTER, "Total Points", x0 - 25, y0 + h / 2, 90);
+            cb.endText();
 
             // --- Draw axes ---
             cb.setColorStroke(new Color(180, 180, 180));
@@ -330,11 +352,10 @@ public class ReportCardGenerator {
 
                 cb.setColorFill(new Color(120, 120, 120));
                 String tickLabel = String.valueOf((int) Math.round(val));
-                float tw = 1f; // approximate
-                    cb.beginText();
-                    cb.setFontAndSize(bf, 7);
-                    cb.showTextAligned(Element.ALIGN_RIGHT, tickLabel, x0 - 3, y - 3, 0);
-                    cb.endText();
+                cb.beginText();
+                cb.setFontAndSize(bf, 7);
+                cb.showTextAligned(Element.ALIGN_RIGHT, tickLabel, x0 - 3, y - 3, 0);
+                cb.endText();
             }
 
             // --- Plot data ---
@@ -357,41 +378,61 @@ public class ReportCardGenerator {
             // Draw points
             cb.setColorFill(new Color(26, 35, 126));
             for (float[] p : pts) {
-                cb.circle(p[0], p[1], 3);
+                cb.circle(p[0], p[1], 3.5f);
                 cb.fill();
             }
 
-            // X-axis labels (exam numbers)
+            // X-axis label
             cb.setColorFill(new Color(80, 80, 80));
-            for (int i = 0; i < labels.size(); i++) {
+            cb.beginText();
+            cb.setFontAndSize(bf, 8);
+            cb.showTextAligned(Element.ALIGN_CENTER, "Exam #", x0 + w / 2, y0 - 14, 0);
+            cb.endText();
+
+            // X-axis tick labels
+            for (int i = 0; i < values.size(); i++) {
                 float x = x0 + w * (i + 1) / (values.size() + 1);
                 String shortLabel = "E" + (i + 1);
                 cb.beginText();
                 cb.setFontAndSize(bf, 7);
-                cb.showTextAligned(Element.ALIGN_CENTER, shortLabel, x, y0 - 12, 0);
+                cb.showTextAligned(Element.ALIGN_CENTER, shortLabel, x, y0 - 7, 0);
                 cb.endText();
             }
         });
 
         container.addCell(chartCell);
 
-        // Exam legend row
+        // Legend
+        Font legFont = FontFactory.getFont(FontFactory.HELVETICA, 7, Color.GRAY);
         StringBuilder legendSb = new StringBuilder();
         for (int i = 0; i < labels.size(); i++) {
-            String shortLabel = "E" + (i + 1);
-            String examPart = labels.get(i).length() > 25 ? labels.get(i).substring(0, 25) + "..." : labels.get(i);
-            legendSb.append(shortLabel).append("=").append(examPart);
-            if (i < labels.size() - 1) legendSb.append(",  ");
+            if (i > 0) legendSb.append(", ");
+            legendSb.append("E").append(i + 1).append("=");
+            String examPart = labels.get(i).length() > 28 ? labels.get(i).substring(0, 28) + "..." : labels.get(i);
+            legendSb.append(examPart);
         }
-        Font legFont = FontFactory.getFont(FontFactory.HELVETICA, 7, Color.GRAY);
         Paragraph legend = new Paragraph(legendSb.toString(), legFont);
         legend.setAlignment(Element.ALIGN_CENTER);
-        legend.setSpacingBefore(4);
+        legend.setSpacingBefore(2);
         PdfPCell legCell = new PdfPCell(legend);
         legCell.setBorder(PdfPCell.NO_BORDER);
         container.addCell(legCell);
 
         doc.add(container);
+    }
+
+    private void addStamp(Document doc, PdfWriter writer) {
+        String stampPath = new SettingsManager().getStampPath();
+        if (stampPath == null || stampPath.isBlank()) return;
+        try {
+            com.lowagie.text.Image stamp = com.lowagie.text.Image.getInstance(stampPath);
+            stamp.scaleToFit(100, 60);
+            stamp.setAbsolutePosition(
+                PageSize.A4.getWidth() - stamp.getScaledWidth() - 36,
+                36
+            );
+            writer.getDirectContent().addImage(stamp);
+        } catch (Exception ignored) {}
     }
 
     public void generateBulkStudentReports(long examId, String groupBy, String groupValue, Path outputPath) {
@@ -409,6 +450,7 @@ public class ReportCardGenerator {
         Document doc = new Document(PageSize.A4, 36, 36, 36, 36);
         try {
             PdfWriter writer = PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
+            writer.setPageEvent(new LogoBackground());
             doc.open();
 
             for (int i = 0; i < studentIds.size(); i++) {
@@ -420,6 +462,7 @@ public class ReportCardGenerator {
                 addSummary(doc, examId, studentId);
                 addPerformanceIndicator(doc, examId, studentId);
                 addTrendChart(doc, writer, studentId);
+                addStamp(doc, writer);
             }
 
             doc.close();
@@ -641,17 +684,27 @@ public class ReportCardGenerator {
                 table.addCell(new Phrase(rd.name, rf));
 
                 for (long subjId : subjIds) {
-                    double score = scores.getOrDefault(rd.id, Collections.emptyMap()).getOrDefault(subjId, 0.0);
-                    double mean = means.getOrDefault(subjId, 0.0);
-                    double dev = Math.round((score - mean) * 10.0) / 10.0;
-                    int pos = subjectPositions.getOrDefault(subjId, Collections.emptyMap()).getOrDefault(rd.id, 0);
-
-                    table.addCell(new Phrase(score > 0 ? String.valueOf(score) : "-", rf));
-                    table.addCell(new Phrase(dev != 0 ? String.valueOf(dev) : "0", rf));
-                    table.addCell(new Phrase(pos > 0 ? String.valueOf(pos) : "-", rf));
+                    Map<Long, Double> studentScores = scores.getOrDefault(rd.id, Collections.emptyMap());
+                    boolean tookSubject = studentScores.containsKey(subjId);
+                    if (tookSubject) {
+                        double score = studentScores.get(subjId);
+                        double mean = means.getOrDefault(subjId, 0.0);
+                        double dev = Math.round((score - mean) * 10.0) / 10.0;
+                        int pos = subjectPositions.getOrDefault(subjId, Collections.emptyMap()).getOrDefault(rd.id, 0);
+                        table.addCell(new Phrase(String.valueOf(score), rf));
+                        table.addCell(new Phrase(dev != 0 ? String.valueOf(dev) : "0", rf));
+                        table.addCell(new Phrase(String.valueOf(pos), rf));
+                    } else {
+                        table.addCell(new Phrase("-", rf));
+                        table.addCell(new Phrase("-", rf));
+                        table.addCell(new Phrase("-", rf));
+                    }
                 }
 
-                int subjCount = scores.getOrDefault(rd.id, Collections.emptyMap()).size();
+                // Only count subjects the student actually took
+                int subjCount = (int) scores.getOrDefault(rd.id, Collections.emptyMap()).entrySet().stream()
+                    .filter(e -> e.getValue() > 0).count();
+                if (subjCount == 0) subjCount = scores.getOrDefault(rd.id, Collections.emptyMap()).size();
                 double meanPts = subjCount > 0 ? Math.round((double) rd.totalPts / subjCount * 10.0) / 10.0 : 0;
                 String grade = meanPts >= 12 ? "A" : meanPts >= 11 ? "A-" : meanPts >= 10 ? "B+" : meanPts >= 9 ? "B" : meanPts >= 8 ? "B-" : meanPts >= 7 ? "C+" : meanPts >= 6 ? "C" : meanPts >= 5 ? "C-" : meanPts >= 4 ? "D+" : meanPts >= 3 ? "D" : meanPts >= 2 ? "D-" : "E";
 
@@ -697,20 +750,18 @@ public class ReportCardGenerator {
             ResultSet prevRs = prevPs.executeQuery();
             int prevPoints = prevRs.next() ? prevRs.getInt("total_points") : -1;
 
-            Font f = FontFactory.getFont(FontFactory.HELVETICA, 11);
             Paragraph indicator = new Paragraph();
-            indicator.setSpacingBefore(12);
+            indicator.setSpacingBefore(6);
             if (prevPoints >= 0) {
                 int diff = currentPoints - prevPoints;
-                if (diff > 0) {
-                    indicator.add(new Phrase("Performance Trend: Improved by " + diff + " points from previous exam.", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.GREEN)));
-                } else if (diff < 0) {
-                    indicator.add(new Phrase("Performance Trend: Dropped by " + Math.abs(diff) + " points from previous exam.", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.RED)));
-                } else {
-                    indicator.add(new Phrase("Performance Trend: Maintained same points as previous exam.", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.ORANGE)));
-                }
+                String msg;
+                Color c;
+                if (diff > 0) { msg = "Trend: Improved by " + diff + " pts from previous exam"; c = Color.GREEN; }
+                else if (diff < 0) { msg = "Trend: Dropped by " + Math.abs(diff) + " pts from previous exam"; c = Color.RED; }
+                else { msg = "Trend: Maintained same points as previous exam"; c = Color.ORANGE; }
+                indicator.add(new Phrase(msg, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, c)));
             } else {
-                indicator.add(new Phrase("Performance Trend: First exam - no previous data for comparison.", FontFactory.getFont(FontFactory.HELVETICA, 11, Color.GRAY)));
+                indicator.add(new Phrase("Trend: First exam - no previous data.", FontFactory.getFont(FontFactory.HELVETICA, 11, Color.GRAY)));
             }
             doc.add(indicator);
         } catch (SQLException e) {

@@ -20,6 +20,8 @@ import javafx.stage.Stage;
 
 import com.zaraki.exams.SeedData;
 import com.zaraki.exams.auth.UserManagementForm;
+import com.zaraki.exams.forms.PublishForm;
+import com.zaraki.exams.forms.SchoolSettingsForm;
 import java.sql.*;
 import java.util.List;
 
@@ -33,6 +35,8 @@ public class DashboardForm {
     private final Stage stage;
     private final ComboBox<String> curriculumSwitcher;
     private final String loggedInUser;
+    private final String loggedInUsername;
+    private final String loggedInRole;
     private final Runnable onLogout;
 
     private StudentForm studentForm;
@@ -40,14 +44,18 @@ public class DashboardForm {
     private ExamForm examForm;
     private GradingScaleForm gradingScaleForm;
     private UserManagementForm userManagementForm;
+    private SchoolSettingsForm schoolSettingsForm;
+    private PublishForm publishForm;
     private MarksEntryForm marksEntryForm;
     private BulkMarksForm bulkMarksForm;
     private AnalysisForm analysisForm;
     private ReportForm reportForm;
 
-    public DashboardForm(Stage stage, String loggedInUser, Runnable onLogout) {
+    public DashboardForm(Stage stage, String loggedInUser, String loggedInRole, Runnable onLogout) {
         this.stage = stage;
         this.loggedInUser = loggedInUser;
+        this.loggedInRole = loggedInRole;
+        this.loggedInUsername = loggedInUser;
         this.onLogout = onLogout;
         this.db = DatabaseEngine.getInstance();
         this.settings = new SettingsManager();
@@ -104,6 +112,8 @@ public class DashboardForm {
             {"Exams", ""},
             {"Grading Scales", ""},
             {"Users", ""},
+            {"Settings", ""},
+            {"Publish", ""},
             {"Marks Entry", ""},
             {"Bulk Marks", ""},
             {"Analysis", ""},
@@ -167,6 +177,8 @@ public class DashboardForm {
             case "exams" -> showExams();
             case "grading_scales" -> showGradingScales();
             case "users" -> showUsers();
+            case "settings" -> showSettings();
+            case "publish" -> showPublish();
             case "marks_entry" -> showMarksEntry();
             case "bulk_marks" -> showBulkMarks();
             case "analysis" -> showAnalysis();
@@ -377,6 +389,16 @@ public class DashboardForm {
     private void showUsers() {
         userManagementForm = new UserManagementForm();
         setContent(userManagementForm.getView());
+    }
+
+    private void showSettings() {
+        schoolSettingsForm = new SchoolSettingsForm();
+        setContent(schoolSettingsForm.getView());
+    }
+
+    private void showPublish() {
+        publishForm = new PublishForm(db, loggedInUsername, loggedInRole);
+        setContent(publishForm.getView());
     }
 
     private void showMarksEntry() {

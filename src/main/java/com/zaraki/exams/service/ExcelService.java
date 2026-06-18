@@ -257,7 +257,7 @@ public class ExcelService {
                     if (scoreStr == null || scoreStr.isBlank()) continue;
                     try {
                         double score = Double.parseDouble(scoreStr.trim());
-                        String gradeResult = analysisService.determineGradeAndPoints(score, subjectId);
+                        String gradeResult = analysisService.determineGradeAndPoints(score, subjectId, examId);
                         String[] parts = gradeResult.split("\\|");
                         Mark mark = new Mark(examId, studentId, subjectId, score);
                         mark.setGradeAchieved(parts[0]);
