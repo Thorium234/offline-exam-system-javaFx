@@ -2,7 +2,7 @@
 
 A lightweight, offline-first desktop application for analyzing exam results and generating report forms in Kenyan secondary schools.
 
-Built with **Java 17+, JavaFX, SQLite, and Maven**.
+Built with **Java 17+, SQLite, and Maven**.
 
 ## Features
 
@@ -19,10 +19,9 @@ Built with **Java 17+, JavaFX, SQLite, and Maven**.
 | Component | Technology |
 |-----------|-----------|
 | Language | Java 17 (LTS) |
-| UI Framework | JavaFX |
-| Database | SQLite |
+| UI | Console / JavaFX (planned) |
+| Database | SQLite (via JDBC) |
 | Build Tool | Maven |
-| PDF Generation | OpenPDF / iText (LGPL) |
 
 ## Getting Started
 
@@ -30,18 +29,28 @@ Built with **Java 17+, JavaFX, SQLite, and Maven**.
 
 - Java 17+ (JDK)
 - Maven 3.8+
-- JavaFX SDK (if not bundled with JDK)
 
 ### Build & Run
 
 ```bash
+# Build with dependencies bundled
 mvn clean package
+
+# Run
 java -jar target/exam-analysis-1.0.0.jar
 ```
 
-### Database
+The application will create `exam_analysis.db` in the project root on first launch.
 
-The application uses a local SQLite file (`exam_analysis.db`) created automatically on first launch with WAL journal mode for optimal performance.
+### Running with JavaFX (requires internet)
+
+To use the JavaFX GUI, add the following dependencies to `pom.xml` and run:
+
+```bash
+mvn javafx:run
+```
+
+See [JavaFX + Maven setup](https://openjfx.io/openjfx-docs/#maven) for details.
 
 ## Project Structure
 
@@ -55,8 +64,9 @@ src/main/java/com/zaraki/exams/
 │   ├── Mark.java
 │   ├── Student.java
 │   └── Subject.java
-└── repository/
-    └── MarksRepository.java    — Batch mark entry & data access
+├── repository/
+│   └── MarksRepository.java    — Batch mark entry & data access
+└── Main.java                   — Application entry point (console)
 ```
 
 ## License
