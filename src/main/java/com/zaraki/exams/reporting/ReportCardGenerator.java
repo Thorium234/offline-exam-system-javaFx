@@ -394,6 +394,40 @@ public class ReportCardGenerator {
         doc.add(container);
     }
 
+    public void generateBulkStudentReports(long examId, String groupBy, String groupValue, Path outputPath) {
+        String filterCol = groupBy.equals("stream") ? "stream" : "form";
+        List<Long> studentIds = new ArrayList<>();
+        String studentSql = "SELECT id FROM students WHERE " + filterCol + " = ? ORDER BY admission_number";
+        try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(studentSql)) {
+            ps.setString(1, groupValue);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) studentIds.add(rs.getLong("id"));
+        } catch (SQLException e) { throw new RuntimeException(e); }
+
+        if (studentIds.isEmpty()) throw new RuntimeException("No students found for " + groupBy + ": " + groupValue);
+
+        Document doc = new Document(PageSize.A4, 36, 36, 36, 36);
+        try {
+            PdfWriter writer = PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
+            doc.open();
+
+            for (int i = 0; i < studentIds.size(); i++) {
+                if (i > 0) doc.newPage();
+                long studentId = studentIds.get(i);
+                addHeader(doc, examId, studentId);
+                addStudentInfo(doc, examId, studentId);
+                addSubjectTable(doc, examId, studentId);
+                addSummary(doc, examId, studentId);
+                addPerformanceIndicator(doc, examId, studentId);
+                addTrendChart(doc, writer, studentId);
+            }
+
+            doc.close();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate bulk report cards", e);
+        }
+    }
+
     public void generateStudentListPdf(String filterCol, String filterValue, Path outputPath) {
         Document doc = new Document(PageSize.A4, 30, 30, 30, 30);
         try {

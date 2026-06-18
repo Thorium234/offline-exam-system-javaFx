@@ -390,7 +390,7 @@ public class DashboardForm {
     }
 
     private void showAnalysis() {
-        analysisForm = new AnalysisForm(db);
+        analysisForm = new AnalysisForm(db, stage);
         setContent(analysisForm.getView());
     }
 
