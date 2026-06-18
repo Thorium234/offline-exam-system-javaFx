@@ -192,7 +192,7 @@ public class DashboardForm {
     }
 
     private void showStudents() {
-        studentForm = new StudentForm(db);
+        studentForm = new StudentForm(db, stage);
         setContent(studentForm.getView());
     }
 

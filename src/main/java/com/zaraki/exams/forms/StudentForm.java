@@ -1,23 +1,38 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.service.ExcelService;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
+import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import javafx.scene.paint.Color;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 
+import java.io.File;
 import java.sql.*;
 
 public class StudentForm {
 
     private final DatabaseEngine db;
+    private final ExcelService excelService;
+    private final Stage stage;
 
-    public StudentForm(DatabaseEngine db) {
+    private TableView<StudentRow> table;
+    private ObservableList<StudentRow> data;
+    private Label statusLabel;
+
+    public StudentForm(DatabaseEngine db, Stage stage) {
         this.db = db;
+        this.stage = stage;
+        this.excelService = new ExcelService();
     }
 
     public VBox getView() {
@@ -25,6 +40,10 @@ public class StudentForm {
 
         Label header = new Label("Students");
         header.setFont(Font.font("System", FontWeight.BOLD, 24));
+
+        Label info = new Label("Add students manually or use Excel template for bulk import.");
+        info.setFont(Font.font("System", 13));
+        info.setTextFill(Color.gray(0.5));
 
         HBox form = new HBox(10);
         TextField admField = new TextField(); admField.setPromptText("Admission No.");
@@ -34,7 +53,18 @@ public class StudentForm {
         Button addBtn = new Button("Add");
         form.getChildren().addAll(admField, nameField, formField, streamField, addBtn);
 
-        TableView<StudentRow> table = new TableView<>();
+        HBox excelRow = new HBox(10);
+        Button genBtn = new Button("Generate Template");
+        Button uploadBtn = new Button("Upload Filled Sheet");
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setVisible(false);
+        spinner.setPrefSize(20, 20);
+        excelRow.getChildren().addAll(genBtn, uploadBtn, spinner);
+
+        statusLabel = new Label();
+        statusLabel.setTextFill(Color.gray(0.5));
+
+        table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         TableColumn<StudentRow, Long> colId = new TableColumn<>("ID");
         colId.setCellValueFactory(new PropertyValueFactory<>("id")); colId.setPrefWidth(60);
@@ -49,8 +79,8 @@ public class StudentForm {
         table.getColumns().addAll(colId, colAdm, colName, colForm, colStream);
         table.setPrefHeight(400);
 
-        ObservableList<StudentRow> data = FXCollections.observableArrayList();
-        load(data);
+        data = FXCollections.observableArrayList();
+        load();
         table.setItems(data);
 
         addBtn.setOnAction(e -> {
@@ -62,16 +92,57 @@ public class StudentForm {
                 ps.setInt(3, Integer.parseInt(formField.getText()));
                 ps.setString(4, streamField.getText());
                 ps.executeUpdate();
-                load(data);
+                load();
                 admField.clear(); nameField.clear(); formField.clear(); streamField.clear();
             } catch (Exception ex) { showAlert(ex.getMessage()); }
         });
 
-        view.getChildren().addAll(header, form, table);
+        genBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Save Student Template");
+            fc.setInitialFileName("student_template.xlsx");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
+            File file = fc.showSaveDialog(stage);
+            if (file == null) return;
+            spinner.setVisible(true);
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() {
+                    excelService.generateStudentTemplate(file.toPath());
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Template saved to: " + file.getName()); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            new Thread(task).start();
+        });
+
+        uploadBtn.setOnAction(e -> {
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Upload Students Excel");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
+            File file = fc.showOpenDialog(stage);
+            if (file == null) return;
+            spinner.setVisible(true);
+            Task<ExcelService.StudentImportResult> task = new Task<>() {
+                @Override protected ExcelService.StudentImportResult call() {
+                    return excelService.processStudentUpload(file.toPath());
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                spinner.setVisible(false);
+                ExcelService.StudentImportResult r = task.getValue();
+                statusLabel.setText("Imported: " + r.inserted() + " new, " + r.updated() + " updated, " + r.errors() + " errors");
+                load();
+            });
+            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            new Thread(task).start();
+        });
+
+        view.getChildren().addAll(header, info, form, excelRow, statusLabel, table);
         return view;
     }
 
-    private void load(ObservableList<StudentRow> data) {
+    private void load() {
         data.clear();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
@@ -83,8 +154,7 @@ public class StudentForm {
     }
 
     private void showAlert(String msg) {
-        Alert a = new Alert(Alert.AlertType.ERROR, msg);
-        a.showAndWait();
+        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
     }
 
     public static class StudentRow {
