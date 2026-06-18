@@ -9,13 +9,17 @@ public class DatabaseEngine {
 
     private static final String DB_URL = "jdbc:sqlite:exam_analysis.db";
     private static volatile DatabaseEngine instance;
-    private final Connection connection;
+    private Connection connection;
 
     private DatabaseEngine() {
         try {
+            Class.forName("org.sqlite.JDBC");
             this.connection = DriverManager.getConnection(DB_URL);
             initializePragmas();
             executeDDL();
+            Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("SQLite JDBC driver not found", e);
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize database", e);
         }
@@ -33,7 +37,14 @@ public class DatabaseEngine {
     }
 
     public Connection getConnection() {
-        return connection;
+        try {
+            if (connection == null || connection.isClosed()) {
+                connection = DriverManager.getConnection(DB_URL);
+            }
+            return connection;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to obtain database connection", e);
+        }
     }
 
     private void initializePragmas() throws SQLException {
@@ -120,7 +131,7 @@ public class DatabaseEngine {
                 connection.close();
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to close database connection", e);
+            System.err.println("Failed to close database connection: " + e.getMessage());
         }
     }
 }
