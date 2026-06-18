@@ -1,2 +1,44 @@
+# instruction files
 instraction.md
 instruction.md
+
+# Maven
+target/
+*.jar
+*.war
+*.nar
+*.ear
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.project
+.classpath
+*.class
+
+# VS Code
+.vscode/
+
+# NetBeans
+nbproject/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
