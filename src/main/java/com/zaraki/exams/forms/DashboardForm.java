@@ -31,6 +31,7 @@ public class DashboardForm {
     private ExamForm examForm;
     private GradingScaleForm gradingScaleForm;
     private MarksEntryForm marksEntryForm;
+    private BulkMarksForm bulkMarksForm;
     private AnalysisForm analysisForm;
     private ReportForm reportForm;
 
@@ -86,6 +87,7 @@ public class DashboardForm {
             {"Exams", ""},
             {"Grading Scales", ""},
             {"Marks Entry", ""},
+            {"Bulk Marks", ""},
             {"Analysis", ""},
             {"Reports", ""}
         };
@@ -137,6 +139,7 @@ public class DashboardForm {
             case "exams" -> showExams();
             case "grading_scales" -> showGradingScales();
             case "marks_entry" -> showMarksEntry();
+            case "bulk_marks" -> showBulkMarks();
             case "analysis" -> showAnalysis();
             case "reports" -> showReports();
         }
@@ -211,6 +214,11 @@ public class DashboardForm {
     private void showMarksEntry() {
         marksEntryForm = new MarksEntryForm(db);
         setContent(marksEntryForm.getView());
+    }
+
+    private void showBulkMarks() {
+        bulkMarksForm = new BulkMarksForm(db, stage);
+        setContent(bulkMarksForm.getView());
     }
 
     private void showAnalysis() {
