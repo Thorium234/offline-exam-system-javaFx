@@ -1,25 +1,25 @@
 # Zaraki Exam Analysis System
 
-A lightweight, offline-first desktop application for analyzing exam results and generating report forms in Kenyan secondary schools.
+A lightweight, offline-first desktop GUI application for analyzing exam results and generating report forms in Kenyan secondary schools.
 
-Built with **Java 17+, SQLite, and Maven**.
+Built with **Java 17+, JavaFX, SQLite, and Maven**.
 
 ## Features
 
-- **Student Management** — Register and manage students across forms (1–4) and streams
+- **Student Management** — Register and view students across forms (1–4) and streams
 - **Subject Configuration** — Define subjects with departments and groupings (Compulsory/Elective)
-- **Grading Scales** — Configurable grade boundaries with points and remarks
 - **Exam Setup** — Academic year, term, and exam series management
-- **Batch Mark Entry** — High-performance bulk insert of exam scores using SQLite transactions
-- **Analysis Engine** — Multi-threaded computation of subject/student metrics, mean scores, standard deviation, and dense rankings
-- **PDF Report Forms** — Generate A4 report cards with subject breakdown, positions, and performance trends
+- **Marks Entry** — Enter scores per exam with a cross-join grid of students and subjects
+- **Batch Mark Entry** — High-performance bulk insert via SQLite transactions
+- **Dashboard** — Overview counts of students, subjects, exams, and marks
+- **PDF Report Forms** — *(coming soon)* Generate A4 report cards with subject breakdown and positions
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Language | Java 17 (LTS) |
-| UI | Console / JavaFX (planned) |
+| UI Framework | JavaFX 17.0.6 |
 | Database | SQLite (via JDBC) |
 | Build Tool | Maven |
 
@@ -29,28 +29,25 @@ Built with **Java 17+, SQLite, and Maven**.
 
 - Java 17+ (JDK)
 - Maven 3.8+
+- Internet connection (first build only — downloads JavaFX and SQLite dependencies)
 
-### Build & Run
+### Build
 
 ```bash
-# Build with dependencies bundled
 mvn clean package
+```
 
-# Run
+### Run
+
+```bash
+# Using Maven (preferred)
+mvn javafx:run
+
+# Using the packaged JAR directly
 java -jar target/exam-analysis-1.0.0.jar
 ```
 
-The application will create `exam_analysis.db` in the project root on first launch.
-
-### Running with JavaFX (requires internet)
-
-To use the JavaFX GUI, add the following dependencies to `pom.xml` and run:
-
-```bash
-mvn javafx:run
-```
-
-See [JavaFX + Maven setup](https://openjfx.io/openjfx-docs/#maven) for details.
+The database file `exam_analysis.db` is created automatically in the project root on first launch.
 
 ## Project Structure
 
@@ -66,7 +63,8 @@ src/main/java/com/zaraki/exams/
 │   └── Subject.java
 ├── repository/
 │   └── MarksRepository.java    — Batch mark entry & data access
-└── Main.java                   — Application entry point (console)
+├── Launcher.java               — Entry point (calls Main.launch)
+└── Main.java                   — JavaFX Application with full GUI
 ```
 
 ## License
