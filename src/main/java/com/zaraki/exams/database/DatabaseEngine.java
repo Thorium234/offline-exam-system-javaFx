@@ -177,11 +177,6 @@ public class DatabaseEngine {
                 CREATE INDEX IF NOT EXISTS idx_exam_subjects_exam ON exam_subjects(exam_id);
             """);
 
-            boolean usersExists;
-            try (var rs = stmt.executeQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")) {
-                usersExists = rs.next();
-            }
-
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,7 +188,12 @@ public class DatabaseEngine {
                 );
             """);
 
-            if (!usersExists) {
+            boolean adminExists;
+            try (var rs = stmt.executeQuery("SELECT COUNT(*) FROM users WHERE username='admin'")) {
+                adminExists = rs.next() && rs.getInt(1) > 0;
+            }
+
+            if (!adminExists) {
                 String salt = PasswordUtils.generateSalt();
                 String hash = PasswordUtils.hashPassword("admin", salt);
                 try (var ups = conn.prepareStatement(
