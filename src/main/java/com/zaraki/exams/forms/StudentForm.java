@@ -91,10 +91,26 @@ public class StudentForm {
             try (Connection conn = db.getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                      "INSERT INTO students (admission_number, full_name, form, stream) VALUES (?,?,?,?)")) {
-                ps.setString(1, admField.getText());
-                ps.setString(2, nameField.getText());
-                ps.setInt(3, Integer.parseInt(formField.getText()));
-                ps.setString(4, streamField.getText());
+                String adm = admField.getText().trim();
+                String name = nameField.getText().trim();
+                String formText = formField.getText().trim();
+                String stream = streamField.getText().trim();
+                if (adm.isEmpty() || name.isEmpty() || formText.isEmpty() || stream.isEmpty()) {
+                    showAlert("All fields are required.");
+                    return;
+                }
+                int formNum;
+                try {
+                    formNum = Integer.parseInt(formText);
+                    if (formNum < 1 || formNum > 4) throw new NumberFormatException();
+                } catch (NumberFormatException ex) {
+                    showAlert("Form must be a number between 1 and 4.");
+                    return;
+                }
+                ps.setString(1, adm);
+                ps.setString(2, name);
+                ps.setInt(3, formNum);
+                ps.setString(4, stream);
                 ps.executeUpdate();
                 load();
                 admField.clear(); nameField.clear(); formField.clear(); streamField.clear();

@@ -26,13 +26,16 @@ public class ExamAnalysisService {
 
     public List<SubjectMetrics> computeSubjectMetrics(long examId) {
         String sql = """
+            WITH subject_avgs AS (
+                SELECT subject_id, AVG(score) AS avg_score
+                FROM marks WHERE exam_id = ?
+                GROUP BY subject_id
+            )
             SELECT
                 sub.id,
                 sub.subject_name,
                 sub.department,
                 ROUND(AVG(m.score), 1) AS mean_score,
-                ROUND(AVG(m.score) * 1.0, 1) AS mean_for_grade,
-                ROUND(AVG(m.score), 1) AS mean_display,
                 CASE
                     WHEN AVG(m.score) >= 80 THEN 'A'
                     WHEN AVG(m.score) >= 75 THEN 'A-'
@@ -47,16 +50,12 @@ public class ExamAnalysisService {
                     WHEN AVG(m.score) >= 30 THEN 'D-'
                     ELSE 'E'
                 END AS mean_grade,
-                ROUND(SUM((m.score - sub_avg.avg_score) * (m.score - sub_avg.avg_score)) /
-                    NULLIF(COUNT(m.score) - 1, 0), 1) AS variance,
+                ROUND(SQRT(SUM((m.score - sa.avg_score) * (m.score - sa.avg_score)) /
+                    NULLIF(COUNT(m.score) - 1, 0)), 1) AS std_dev,
                 COUNT(m.score) AS candidates
             FROM marks m
             JOIN subjects sub ON sub.id = m.subject_id
-            JOIN (
-                SELECT subject_id, AVG(score) AS avg_score
-                FROM marks WHERE exam_id = ?
-                GROUP BY subject_id
-            ) sub_avg ON sub_avg.subject_id = m.subject_id
+            JOIN subject_avgs sa ON sa.subject_id = m.subject_id
             WHERE m.exam_id = ?
             GROUP BY sub.id, sub.subject_name, sub.department
             ORDER BY mean_score DESC
@@ -73,8 +72,7 @@ public class ExamAnalysisService {
                 double mean = rs.getDouble("mean_score");
                 if (mean < prevMean) rank = list.size() + 1;
                 prevMean = mean;
-                double variance = rs.getDouble("variance");
-                double stdDev = Math.round(Math.sqrt(variance) * 10.0) / 10.0;
+                double stdDev = rs.getDouble("std_dev");
                 list.add(new SubjectMetrics(
                     rs.getLong("id"),
                     rs.getString("subject_name"),
@@ -426,6 +424,130 @@ public class ExamAnalysisService {
         } catch (SQLException e) {
             throw new RuntimeException("Failed to compute student trend", e);
         }
+    }
+
+    // ── Merit List ──
+
+    public record MeritSubject(long id, String code, String name) {}
+    public record MeritStudent(long studentId, String admissionNumber, String fullName, String stream,
+                               double totalMarks, int totalPoints, double meanPoints, String meanGrade,
+                               int rank, Map<Long, Double> scores, Map<Long, Double> deviations,
+                               Map<Long, Integer> subjectPositions) {}
+
+    public record MeritReportData(List<MeritSubject> subjects, List<MeritStudent> students) {}
+
+    public MeritReportData computeMeritReport(long examId, String filterCol, String groupValue) {
+        String validCol = DatabaseEngine.validateFilterColumn(filterCol);
+
+        // Subjects
+        List<MeritSubject> subjects = new ArrayList<>();
+        String subjSql = "SELECT DISTINCT sub.id, sub.subject_code, sub.subject_name FROM marks m JOIN subjects sub ON sub.id = m.subject_id WHERE m.exam_id = ? ORDER BY sub.subject_name";
+        try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(subjSql)) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next())
+                subjects.add(new MeritSubject(rs.getLong("id"), rs.getString("subject_code"), rs.getString("subject_name")));
+        } catch (SQLException e) { throw new RuntimeException("Failed to load subjects", e); }
+
+        // Students + marks
+        Map<Long, String[]> studentInfo = new LinkedHashMap<>();
+        Map<Long, Map<Long, Double>> scores = new HashMap<>();
+        Map<Long, Map<Long, Integer>> points = new HashMap<>();
+        List<Long> studentOrder = new ArrayList<>();
+
+        String dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + validCol + " = ? ORDER BY s.id, m.subject_id";
+        try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(dataSql)) {
+            ps.setLong(1, examId); ps.setString(2, groupValue);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                long sid = rs.getLong("id");
+                if (!studentInfo.containsKey(sid)) {
+                    studentInfo.put(sid, new String[]{rs.getString("admission_number"), rs.getString("full_name"), rs.getString("stream")});
+                    studentOrder.add(sid);
+                }
+                long subjId = rs.getLong("subject_id");
+                if (!rs.wasNull()) {
+                    scores.computeIfAbsent(sid, k -> new HashMap<>()).put(subjId, rs.getDouble("score"));
+                    points.computeIfAbsent(sid, k -> new HashMap<>()).put(subjId, rs.getInt("points_achieved"));
+                }
+            }
+        } catch (SQLException e) { throw new RuntimeException("Failed to load student marks", e); }
+
+        // Subject means
+        Map<Long, Double> means = new HashMap<>();
+        try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement("SELECT subject_id, AVG(score) AS m FROM marks WHERE exam_id = ? GROUP BY subject_id")) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) means.put(rs.getLong("subject_id"), rs.getDouble("m"));
+        } catch (SQLException e) { throw new RuntimeException("Failed to compute subject means", e); }
+
+        // Subject positions (dense ranking per subject)
+        Map<Long, Map<Long, Integer>> subjectPositions = new HashMap<>();
+        Map<Long, List<Map.Entry<Long, Double>>> subjScoreList = new HashMap<>();
+        for (var se : scores.entrySet()) {
+            long sid = se.getKey();
+            for (var sse : se.getValue().entrySet())
+                subjScoreList.computeIfAbsent(sse.getKey(), k -> new ArrayList<>()).add(Map.entry(sid, sse.getValue()));
+        }
+        for (var entry : subjScoreList.entrySet()) {
+            long subjId = entry.getKey();
+            var list = entry.getValue();
+            list.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+            int r = 1;
+            double prev = Double.MAX_VALUE;
+            for (int i = 0; i < list.size(); i++) {
+                var e = list.get(i);
+                if (e.getValue() < prev) r = i + 1;
+                prev = e.getValue();
+                subjectPositions.computeIfAbsent(subjId, k -> new HashMap<>()).put(e.getKey(), r);
+            }
+        }
+
+        // Compute totals & sort
+        record Srd(long id, String adm, String name, String stream, double totalMarks, int totalPts) {}
+        List<Srd> ranked = new ArrayList<>();
+        for (long sid : studentOrder) {
+            var sMap = scores.getOrDefault(sid, Collections.emptyMap());
+            double tMarks = sMap.values().stream().mapToDouble(v -> v).sum();
+            var pMap = points.getOrDefault(sid, Collections.emptyMap());
+            int tPts = pMap.values().stream().mapToInt(v -> v).sum();
+            String[] info = studentInfo.get(sid);
+            ranked.add(new Srd(sid, info[0], info[1], info[2], tMarks, tPts));
+        }
+        ranked.sort((a, b) -> Integer.compare(b.totalPts, a.totalPts));
+
+        // Build results
+        List<MeritStudent> resultStudents = new ArrayList<>();
+        int rank = 0, prevPts = Integer.MAX_VALUE;
+        for (int i = 0; i < ranked.size(); i++) {
+            Srd rd = ranked.get(i);
+            if (rd.totalPts < prevPts) rank = i + 1;
+            prevPts = rd.totalPts;
+
+            var studentScores = scores.getOrDefault(rd.id, Collections.emptyMap());
+            var studentPts = points.getOrDefault(rd.id, Collections.emptyMap());
+            int subjCount = studentPts.size();
+            double meanPts = subjCount > 0 ? Math.round((double) rd.totalPts / subjCount * 10.0) / 10.0 : 0;
+            String grade = meanPts >= 12 ? "A" : meanPts >= 11 ? "A-" : meanPts >= 10 ? "B+" : meanPts >= 9 ? "B" : meanPts >= 8 ? "B-" : meanPts >= 7 ? "C+" : meanPts >= 6 ? "C" : meanPts >= 5 ? "C-" : meanPts >= 4 ? "D+" : meanPts >= 3 ? "D" : meanPts >= 2 ? "D-" : "E";
+
+            Map<Long, Double> deviations = new HashMap<>();
+            for (var se : studentScores.entrySet()) {
+                double mean = means.getOrDefault(se.getKey(), 0.0);
+                deviations.put(se.getKey(), Math.round((se.getValue() - mean) * 10.0) / 10.0);
+            }
+
+            Map<Long, Integer> studentSubjectPositions = new HashMap<>();
+            for (long subjId : subjectPositions.keySet()) {
+                Integer pos = subjectPositions.get(subjId).get(rd.id);
+                if (pos != null) studentSubjectPositions.put(subjId, pos);
+            }
+
+            resultStudents.add(new MeritStudent(rd.id, rd.adm, rd.name, rd.stream,
+                rd.totalMarks, rd.totalPts, meanPts, grade, rank,
+                studentScores, deviations, studentSubjectPositions));
+        }
+
+        return new MeritReportData(subjects, resultStudents);
     }
 
     public String determineGradeAndPoints(double score, Long subjectId, Long examId) {

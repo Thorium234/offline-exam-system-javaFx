@@ -198,27 +198,42 @@ public class DashboardForm {
         Label header = new Label("Dashboard");
         header.setFont(Font.font("System", FontWeight.BOLD, 24));
 
-        int studentCount = count("students");
-        int subjectCount = count("subjects");
-        int examCount = count("exams");
-        int markCount = count("marks");
-
-        HBox cards = new HBox(20);
-        cards.getChildren().addAll(
-            statCard("Students", String.valueOf(studentCount)),
-            statCard("Subjects", String.valueOf(subjectCount)),
-            statCard("Exams", String.valueOf(examCount)),
-            statCard("Marks Entered", String.valueOf(markCount))
-        );
-
-        VBox trendSection = buildTrendSection();
-
         Label welcome = new Label("Welcome to Thorium Exam Analysis System v2.\n"
             + "Active curriculum: " + settings.getCurriculum().getDisplayName()
             + "\nUse the sidebar to navigate.");
         welcome.setFont(Font.font("System", 14));
         welcome.setTextFill(Color.gray(0.4));
         welcome.setWrapText(true);
+
+        HBox cards = new HBox(20);
+        VBox[] cardBoxes = {
+            statCard("Students", "…"),
+            statCard("Subjects", "…"),
+            statCard("Exams", "…"),
+            statCard("Marks Entered", "…")
+        };
+        cards.getChildren().addAll(cardBoxes);
+        // Load counts in background
+        Task<int[]> countTask = new Task<>() {
+            @Override protected int[] call() {
+                return new int[]{ count("students"), count("subjects"), count("exams"), count("marks") };
+            }
+        };
+        countTask.setOnSucceeded(ev -> {
+            int[] counts = countTask.getValue();
+            for (int i = 0; i < 4; i++) {
+                VBox card = (VBox)cards.getChildren().get(i);
+                Label valLabel = new Label(String.valueOf(counts[i]));
+                valLabel.setFont(Font.font("System", FontWeight.BOLD, 30));
+                String[] titles = {"Students", "Subjects", "Exams", "Marks Entered"};
+                Label titleLabel = new Label(titles[i]);
+                titleLabel.setFont(Font.font("System", 13));
+                card.getChildren().setAll(valLabel, titleLabel);
+            }
+        });
+        new Thread(countTask).start();
+
+        VBox trendSection = buildTrendSection();
 
         // Demo data section
         VBox demoBox = new VBox(8);
@@ -242,7 +257,7 @@ public class DashboardForm {
         seedStudentsBtn.setOnAction(e -> {
             demoSpinner.setVisible(true);
             demoStatus.setText("Generating students...");
-            javafx.concurrent.Task<Integer> task = new javafx.concurrent.Task<>() {
+            Task<Integer> task = new Task<>() {
                 @Override protected Integer call() throws Exception {
                     return new SeedData().seedAll();
                 }
@@ -259,7 +274,7 @@ public class DashboardForm {
         seedMarksBtn.setOnAction(e -> {
             demoSpinner.setVisible(true);
             demoStatus.setText("Generating marks...");
-            javafx.concurrent.Task<String> task = new javafx.concurrent.Task<>() {
+            Task<String> task = new Task<>() {
                 @Override protected String call() throws Exception {
                     SeedData sd = new SeedData();
                     long eid = sd.getFirstExamId();
@@ -293,14 +308,35 @@ public class DashboardForm {
         ComboBox<String> studentBox = new ComboBox<>();
         studentBox.setPromptText("Select Student");
         studentBox.setPrefWidth(300);
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(
-                 "SELECT id, admission_number, full_name FROM students ORDER BY admission_number")) {
-            while (rs.next())
-                studentBox.getItems().add(rs.getLong("id") + " - " + rs.getString("admission_number")
-                    + " | " + rs.getString("full_name"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+
+        Label loadingLabel = new Label("Loading students...");
+        loadingLabel.setFont(Font.font("System", 12));
+        loadingLabel.setTextFill(Color.gray(0.5));
+        controls.getChildren().addAll(new Label("Student:"), studentBox, loadingLabel);
+
+        Task<Void> loadStudentsTask = new Task<>() {
+            @Override protected Void call() throws Exception {
+                try (Connection conn = db.getConnection();
+                     Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery(
+                         "SELECT id, admission_number, full_name FROM students ORDER BY admission_number")) {
+                    ObservableList<String> items = FXCollections.observableArrayList();
+                    while (rs.next())
+                        items.add(rs.getLong("id") + " - " + rs.getString("admission_number")
+                            + " | " + rs.getString("full_name"));
+                    Platform.runLater(() -> {
+                        studentBox.setItems(items);
+                        loadingLabel.setVisible(false);
+                    });
+                }
+                return null;
+            }
+        };
+        loadStudentsTask.setOnFailed(ev -> {
+            loadingLabel.setText("Failed to load: " + loadStudentsTask.getException().getMessage());
+            loadingLabel.setTextFill(Color.RED);
+        });
+        new Thread(loadStudentsTask).start();
 
         NumberAxis xAxis = new NumberAxis();
         xAxis.setLabel("Exam #");
@@ -315,8 +351,6 @@ public class DashboardForm {
         chart.setPrefHeight(300);
         chart.setAnimated(false);
         chart.setLegendVisible(false);
-
-        controls.getChildren().addAll(new Label("Student:"), studentBox);
 
         studentBox.setOnAction(e -> {
             if (studentBox.getValue() == null) return;

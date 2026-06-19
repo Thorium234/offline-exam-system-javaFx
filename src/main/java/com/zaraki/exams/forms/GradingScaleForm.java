@@ -97,14 +97,34 @@ public class GradingScaleForm {
             try (Connection conn = db.getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                      "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (?,?,?,?,?,?)")) {
+                String minText = minField.getText().trim();
+                String maxText = maxField.getText().trim();
+                String grade = gradeField.getText().trim();
+                String ptsText = pointsField.getText().trim();
+                if (minText.isEmpty() || maxText.isEmpty() || grade.isEmpty() || ptsText.isEmpty()) {
+                    showAlert("Min, Max, Grade, and Points are required.");
+                    return;
+                }
+                double min, max;
+                int pts;
+                try {
+                    min = Double.parseDouble(minText);
+                    max = Double.parseDouble(maxText);
+                    pts = Integer.parseInt(ptsText);
+                    if (min < 0 || max < 0 || pts < 0) throw new NumberFormatException();
+                    if (min >= max) { showAlert("Min must be less than Max."); return; }
+                } catch (NumberFormatException ex) {
+                    showAlert("Min and Max must be valid positive numbers; Points must be a valid positive integer.");
+                    return;
+                }
                 String subj = subjectBox.getValue();
                 if (subj == null || subj.equals("-- Global --")) ps.setNull(1, Types.INTEGER);
                 else ps.setLong(1, Long.parseLong(subj.split(":")[0]));
-                ps.setDouble(2, Double.parseDouble(minField.getText()));
-                ps.setDouble(3, Double.parseDouble(maxField.getText()));
-                ps.setString(4, gradeField.getText());
-                ps.setInt(5, Integer.parseInt(pointsField.getText()));
-                ps.setString(6, remarksField.getText());
+                ps.setDouble(2, min);
+                ps.setDouble(3, max);
+                ps.setString(4, grade);
+                ps.setInt(5, pts);
+                ps.setString(6, remarksField.getText().trim());
                 ps.executeUpdate();
                 load();
                 minField.clear(); maxField.clear(); gradeField.clear(); pointsField.clear(); remarksField.clear();

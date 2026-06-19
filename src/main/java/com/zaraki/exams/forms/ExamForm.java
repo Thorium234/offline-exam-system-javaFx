@@ -53,9 +53,20 @@ public class ExamForm {
             try (Connection conn = db.getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                      "INSERT INTO exams (academic_year, term, exam_series) VALUES (?,?,?)")) {
-                ps.setString(1, yearField.getText());
-                ps.setString(2, termBox.getValue());
-                ps.setString(3, seriesField.getText());
+                String year = yearField.getText().trim();
+                String term = termBox.getValue();
+                String series = seriesField.getText().trim();
+                if (year.isEmpty() || term == null || series.isEmpty()) {
+                    showAlert("Year, Term, and Series are required.");
+                    return;
+                }
+                if (!year.matches("\\d{4}")) {
+                    showAlert("Year must be a 4-digit number (e.g. 2026).");
+                    return;
+                }
+                ps.setString(1, year);
+                ps.setString(2, term);
+                ps.setString(3, series);
                 ps.executeUpdate();
                 load(data);
                 yearField.clear(); termBox.setValue(null); seriesField.clear();
