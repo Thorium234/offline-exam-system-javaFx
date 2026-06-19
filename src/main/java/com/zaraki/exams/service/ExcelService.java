@@ -214,6 +214,19 @@ public class ExcelService {
         int marksInserted = 0;
         int totalRows = 0;
 
+        // Pre-query out_of for all subjects for this exam
+        Map<Long, Integer> subjectOutOf = new HashMap<>();
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT subject_id, COALESCE(out_of, 100) FROM exam_subjects WHERE exam_id = ?")) {
+            ps.setLong(1, examId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) subjectOutOf.put(rs.getLong(1), rs.getInt(2));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to load subject out_of values", e);
+        }
+
         try (Workbook wb = new XSSFWorkbook(inputPath.toFile())) {
             Sheet sheet = wb.getSheetAt(0);
 
@@ -259,6 +272,15 @@ public class ExcelService {
                     if (scoreStr == null || scoreStr.isBlank()) continue;
                     try {
                         double score = Double.parseDouble(scoreStr.trim());
+                        if (!Double.isFinite(score) || score < 0) {
+                            errors.add("Row " + (r + 1) + ", col " + (col + 1) + ": invalid score '" + scoreStr + "'");
+                            continue;
+                        }
+                        int maxScore = subjectOutOf.getOrDefault(subjectId, 100);
+                        if (score > maxScore) {
+                            errors.add("Row " + (r + 1) + ", col " + (col + 1) + ": score " + score + " exceeds maximum " + maxScore);
+                            continue;
+                        }
                         String gradeResult = analysisService.determineGradeAndPoints(score, subjectId, examId);
                         String[] parts = gradeResult.split("\\|");
                         Mark mark = new Mark(examId, studentId, subjectId, score);

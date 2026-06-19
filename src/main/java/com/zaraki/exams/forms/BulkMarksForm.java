@@ -140,6 +140,7 @@ public class BulkMarksForm {
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
             File file = fc.showOpenDialog(stage);
             if (file == null) return;
+            if (file.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
 
             long examId = parseExamId();
             spinner.setVisible(true);

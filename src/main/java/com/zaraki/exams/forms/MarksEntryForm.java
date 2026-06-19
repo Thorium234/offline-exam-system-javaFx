@@ -36,6 +36,7 @@ public class MarksEntryForm {
 
     private long selectedExamId;
     private long selectedSubjectId;
+    private int selectedOutOf;
     private String selectedSubjectName;
 
     public MarksEntryForm(DatabaseEngine db) {
@@ -113,7 +114,7 @@ public class MarksEntryForm {
         colScore.setOnEditCommit(e -> {
             StudentMarkRow row = e.getRowValue();
             Double newVal = e.getNewValue();
-            if (newVal != null && newVal >= 0) {
+            if (newVal != null && Double.isFinite(newVal) && newVal >= 0 && newVal <= selectedOutOf) {
                 row.score = newVal;
                 String result = analysisService.determineGradeAndPoints(newVal, selectedSubjectId, selectedExamId);
                 String[] parts = result.split("\\|");
@@ -121,6 +122,10 @@ public class MarksEntryForm {
                 row.points = Integer.parseInt(parts[1]);
                 row.dirty = true;
                 studentTable.refresh();
+            } else if (newVal != null && !Double.isFinite(newVal)) {
+                showAlert("Invalid score value.");
+            } else if (newVal != null) {
+                showAlert("Score must be between 0 and " + selectedOutOf + ".");
             }
         });
         colScore.setPrefWidth(100);
@@ -154,7 +159,7 @@ public class MarksEntryForm {
         loadBtn.setOnAction(e -> loadSubjects());
         saveAllBtn.setOnAction(e -> saveAllMarks());
         refreshBtn.setOnAction(e -> {
-            if (selectedSubjectId > 0) loadStudents(selectedSubjectId);
+            if (selectedSubjectId > 0) loadStudents(selectedSubjectId, selectedOutOf);
         });
 
         return view;
@@ -189,7 +194,8 @@ public class MarksEntryForm {
             long subjId = (Long) info[0];
             String code = (String) info[1];
             String dept = (String) info[2];
-            int markCount = (Integer) info[3];
+            int outOf = (Integer) info[3];
+            int markCount = (Integer) info[4];
 
             VBox card = new VBox(4);
             card.setPrefSize(180, 90);
@@ -227,7 +233,8 @@ public class MarksEntryForm {
                         "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2)")));
 
             long sid = subjId;
-            card.setOnMouseClicked(e -> loadStudents(sid));
+            int oo = outOf;
+            card.setOnMouseClicked(e -> loadStudents(sid, oo));
             subjectCardsArea.getChildren().add(card);
         }
 
@@ -235,8 +242,9 @@ public class MarksEntryForm {
         statusLabel.setText("Class: Form " + form + " - " + stream + " | " + studentCount + " students");
     }
 
-    private void loadStudents(long subjectId) {
+    private void loadStudents(long subjectId, int outOf) {
         selectedSubjectId = subjectId;
+        selectedOutOf = outOf;
         selectedSubjectName = getSubjectName(subjectId);
         selectedSubjectLabel.setText(selectedSubjectName);
         studentEntryArea.setVisible(true);
@@ -308,7 +316,7 @@ public class MarksEntryForm {
                 String msg = "Saved " + saved + " mark(s)";
                 if (errors > 0) msg += " (" + errors + " errors)";
                 statusLabel.setText(msg);
-                loadStudents(subjectId);
+                loadStudents(subjectId, selectedOutOf);
             } catch (Exception e) {
                 conn.rollback();
                 showAlert("Failed to save: " + e.getMessage());
@@ -350,19 +358,22 @@ public class MarksEntryForm {
         Map<String, Object[]> map = new LinkedHashMap<>();
         String sql = """
             SELECT sub.id, sub.subject_code, sub.subject_name, sub.department,
-                   (SELECT COUNT(*) FROM marks m WHERE m.exam_id = ? AND m.subject_id = sub.id) AS mark_count
+                       COALESCE((SELECT es.out_of FROM exam_subjects es WHERE es.exam_id = ? AND es.subject_id = sub.id), 100) AS out_of,
+                    (SELECT COUNT(*) FROM marks m WHERE m.exam_id = ? AND m.subject_id = sub.id) AS mark_count
             FROM subjects sub
             ORDER BY sub.subject_name
             """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, selectedExamId);
+            ps.setLong(2, selectedExamId);
             ResultSet rs = ps.executeQuery();
             while (rs.next())
                 map.put(rs.getString("subject_name"), new Object[]{
                     rs.getLong("id"),
                     rs.getString("subject_code"),
                     rs.getString("department"),
+                    rs.getInt("out_of"),
                     rs.getInt("mark_count")
                 });
         } catch (SQLException e) { showAlert(e.getMessage()); }

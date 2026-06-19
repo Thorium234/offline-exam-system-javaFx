@@ -231,7 +231,10 @@ public class UserManagementForm {
                  Statement st = conn.createStatement();
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users WHERE role='admin'")) {
                 if (rs.next()) adminCount = rs.getLong(1);
-            } catch (SQLException ignored) {}
+            } catch (SQLException e) {
+                showAlert("Failed to check admin count: " + e.getMessage());
+                return;
+            }
             if (adminCount <= 1) {
                 showAlert("Cannot delete the last admin user.");
                 return;

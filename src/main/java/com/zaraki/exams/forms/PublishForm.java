@@ -67,7 +67,9 @@ public class PublishForm {
             ps.setString(1, username);
             ResultSet rs = ps.executeQuery();
             if (rs.next()) return rs.getLong("id");
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            System.err.println("Failed to resolve user ID: " + e.getMessage());
+        }
         return 0;
     }
 
@@ -318,10 +320,14 @@ public class PublishForm {
         cScore.setOnEditCommit(e -> {
             MarkRow mr = e.getRowValue();
             Double v = e.getNewValue();
-            if (v != null && v >= 0) {
+            if (v != null && Double.isFinite(v) && v >= 0 && v <= currentOutOf) {
                 mr.score = v;
                 mr.dirty = true;
                 uploadTable.refresh();
+            } else if (v != null && !Double.isFinite(v)) {
+                showAlert("Invalid score value.");
+            } else if (v != null) {
+                showAlert("Score must be between 0 and " + currentOutOf + ".");
             }
         });
         cScore.setPrefWidth(100);
@@ -452,6 +458,7 @@ public class PublishForm {
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel", "*.xlsx", "*.xls"));
         File f = fc.showOpenDialog(null);
         if (f == null) return;
+        if (f.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
 
         List<String> errors = new ArrayList<>();
         int imported = 0;
@@ -473,6 +480,10 @@ public class PublishForm {
                     double score;
                     try { score = Double.parseDouble(getCellString(row.getCell(1))); }
                     catch (Exception e) { errors.add("Row " + (r + 1) + ": invalid score"); continue; }
+                    if (!Double.isFinite(score) || score < 0 || score > currentOutOf) {
+                        errors.add("Row " + (r + 1) + ": score must be between 0 and " + currentOutOf);
+                        continue;
+                    }
 
                     // Resolve student
                     long studentId;
@@ -598,6 +609,7 @@ public class PublishForm {
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel", "*.xlsx", "*.xls"));
         File f = fc.showOpenDialog(null);
         if (f == null) return;
+        if (f.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
 
         long examId = currentExamId;
         List<String> errors = new ArrayList<>();
@@ -671,6 +683,16 @@ public class PublishForm {
                     ps.executeUpdate();
                 }
 
+                // Get out_of for this subject
+                int subjectOutOf = 100;
+                try (PreparedStatement ps = db.getConnection().prepareStatement(
+                        "SELECT COALESCE(out_of, 100) FROM exam_subjects WHERE exam_id = ? AND subject_id = ?")) {
+                    ps.setLong(1, examId);
+                    ps.setLong(2, subjectId);
+                    ResultSet rs = ps.executeQuery();
+                    if (rs.next()) subjectOutOf = rs.getInt(1);
+                }
+
                 try (PreparedStatement ps = db.getConnection().prepareStatement(
                         "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (?,?,?,?,?,?)")) {
 
@@ -692,6 +714,10 @@ public class PublishForm {
                         double score;
                         try { score = Double.parseDouble(scoreStr.trim()); }
                         catch (NumberFormatException e) { errors.add("Sheet '" + sheetName + "', row " + (r + 1) + ": invalid score"); continue; }
+                        if (!Double.isFinite(score) || score < 0 || score > subjectOutOf) {
+                            errors.add("Sheet '" + sheetName + "', row " + (r + 1) + ": score must be between 0 and " + subjectOutOf);
+                            continue;
+                        }
 
                         String gradeResult = analysisService.determineGradeAndPoints(score, subjectId, examId);
                         String[] parts = gradeResult.split("\\|");

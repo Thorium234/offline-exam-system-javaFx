@@ -142,6 +142,7 @@ public class StudentForm {
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
             File file = fc.showOpenDialog(stage);
             if (file == null) return;
+            if (file.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
             spinner.setVisible(true);
             Task<ExcelService.StudentImportResult> task = new Task<>() {
                 @Override protected ExcelService.StudentImportResult call() {

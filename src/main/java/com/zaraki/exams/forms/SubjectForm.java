@@ -51,13 +51,25 @@ public class SubjectForm {
         table.setItems(data);
 
         addBtn.setOnAction(e -> {
+            String code = codeField.getText().trim();
+            String name = nameField.getText().trim();
+            String dept = deptField.getText().trim();
+            String grp = grpBox.getValue();
+            if (code.isEmpty() || name.isEmpty() || dept.isEmpty()) {
+                showAlert("Code, Name, and Department are required.");
+                return;
+            }
+            if (grp == null) {
+                showAlert("Select a grouping (Compulsory or Elective).");
+                return;
+            }
             try (Connection conn = db.getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                      "INSERT INTO subjects (subject_code, subject_name, department, grouping) VALUES (?,?,?,?)")) {
-                ps.setString(1, codeField.getText());
-                ps.setString(2, nameField.getText());
-                ps.setString(3, deptField.getText());
-                ps.setString(4, grpBox.getValue());
+                ps.setString(1, code);
+                ps.setString(2, name);
+                ps.setString(3, dept);
+                ps.setString(4, grp);
                 ps.executeUpdate();
                 load(data);
                 codeField.clear(); nameField.clear(); deptField.clear(); grpBox.setValue(null);

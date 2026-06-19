@@ -11,15 +11,26 @@ public class DatabaseEngine {
 
     private static final String DB_URL = "jdbc:sqlite:exam_analysis.db";
     private static volatile DatabaseEngine instance;
-    private Connection connection;
 
     private DatabaseEngine() {
         try {
             Class.forName("org.sqlite.JDBC");
-            this.connection = DriverManager.getConnection(DB_URL);
-            initializePragmas();
-            executeDDL();
-            Runtime.getRuntime().addShutdownHook(new Thread(this::close));
+            // Run DDL once on the initial (FX thread) connection
+            try (Connection conn = DriverManager.getConnection(DB_URL)) {
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute("PRAGMA foreign_keys = ON;");
+                    stmt.execute("PRAGMA journal_mode = WAL;");
+                }
+                executeDDL(conn);
+            }
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                // Best-effort close for the shutdown hook's own thread-local
+                try {
+                    Connection c = connectionHolder.get();
+                    if (c != null && !c.isClosed()) c.close();
+                } catch (SQLException ignored) {}
+                connectionHolder.remove();
+            }));
         } catch (ClassNotFoundException e) {
             throw new RuntimeException("SQLite JDBC driver not found", e);
         } catch (SQLException e) {
@@ -38,27 +49,39 @@ public class DatabaseEngine {
         return instance;
     }
 
-    public synchronized Connection getConnection() {
+    private static final ThreadLocal<Connection> connectionHolder = ThreadLocal.withInitial(() -> {
         try {
-            if (connection == null || connection.isClosed()) {
-                connection = DriverManager.getConnection(DB_URL);
-                initializePragmas();
+            Connection conn = DriverManager.getConnection(DB_URL);
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("PRAGMA foreign_keys = ON;");
+                stmt.execute("PRAGMA journal_mode = WAL;");
             }
-            return connection;
+            return conn;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to create database connection", e);
+        }
+    });
+
+    public Connection getConnection() {
+        Connection conn = connectionHolder.get();
+        try {
+            if (conn.isClosed()) {
+                Connection newConn = DriverManager.getConnection(DB_URL);
+                try (Statement stmt = newConn.createStatement()) {
+                    stmt.execute("PRAGMA foreign_keys = ON;");
+                    stmt.execute("PRAGMA journal_mode = WAL;");
+                }
+                connectionHolder.set(newConn);
+                return newConn;
+            }
+            return conn;
         } catch (SQLException e) {
             throw new RuntimeException("Failed to obtain database connection", e);
         }
     }
 
-    private void initializePragmas() throws SQLException {
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("PRAGMA foreign_keys = ON;");
-            stmt.execute("PRAGMA journal_mode = WAL;");
-        }
-    }
-
-    private void executeDDL() throws SQLException {
-        try (Statement stmt = connection.createStatement()) {
+    private void executeDDL(Connection conn) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS students (
@@ -133,7 +156,7 @@ public class DatabaseEngine {
                 CREATE INDEX IF NOT EXISTS idx_exam_subjects_exam ON exam_subjects(exam_id);
             """);
 
-            boolean usersExists = false;
+            boolean usersExists;
             try (var rs = stmt.executeQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")) {
                 usersExists = rs.next();
             }
@@ -152,7 +175,7 @@ public class DatabaseEngine {
             if (!usersExists) {
                 String salt = PasswordUtils.generateSalt();
                 String hash = PasswordUtils.hashPassword("admin", salt);
-                try (var ups = connection.prepareStatement(
+                try (var ups = conn.prepareStatement(
                         "INSERT OR IGNORE INTO users (username, password_hash, salt, full_name, role) VALUES (?,?,?,?,?)")) {
                     ups.setString(1, "admin");
                     ups.setString(2, hash);
@@ -203,15 +226,5 @@ public class DatabaseEngine {
         if (!ALLOWED_FILTER_COLUMNS.contains(col))
             throw new IllegalArgumentException("Invalid filter column: " + col);
         return col;
-    }
-
-    public synchronized void close() {
-        try {
-            if (connection != null && !connection.isClosed()) {
-                connection.close();
-            }
-        } catch (SQLException e) {
-            System.err.println("Failed to close database connection: " + e.getMessage());
-        }
     }
 }
