@@ -209,6 +209,121 @@ public class ExcelService {
         }
     }
 
+    public void generateSubjectTemplate(Path outputPath, long examId, int form, String stream, long subjectId) {
+        String subjectName = getSubjectName(subjectId);
+        String examInfo = getExamInfo(examId);
+        List<String[]> students = getStudents(form, stream);
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet(subjectName);
+
+            Row header0 = sheet.createRow(0);
+            Cell c0 = header0.createCell(0);
+            c0.setCellValue("EXAM: " + examInfo);
+            c0.setCellStyle(boldStyle(wb));
+
+            Row header1 = sheet.createRow(1);
+            Cell c1 = header1.createCell(0);
+            c1.setCellValue("SUBJECT: " + subjectName);
+            c1.setCellStyle(boldStyle(wb));
+
+            Row headerRow = sheet.createRow(3);
+            String[] cols = {"Admission No.", "Student Name", subjectName + " Marks"};
+            for (int i = 0; i < cols.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(cols[i]);
+                cell.setCellStyle(boldStyle(wb));
+            }
+
+            for (int r = 0; r < students.size(); r++) {
+                Row row = sheet.createRow(4 + r);
+                row.createCell(0).setCellValue(students.get(r)[0]);
+                row.createCell(1).setCellValue(students.get(r)[1]);
+            }
+
+            sheet.autoSizeColumn(0);
+            sheet.autoSizeColumn(1);
+            sheet.autoSizeColumn(2);
+
+            try (FileOutputStream fos = new FileOutputStream(outputPath.toFile())) {
+                wb.write(fos);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to generate subject Excel template", e);
+        }
+    }
+
+    public ImportResult processSubjectUpload(Path inputPath, long examId, long subjectId) {
+        List<String> errors = new ArrayList<>();
+        int marksInserted = 0;
+        int totalRows = 0;
+
+        int maxScore;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COALESCE(out_of, 100) FROM exam_subjects WHERE exam_id = ? AND subject_id = ?")) {
+            ps.setLong(1, examId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            maxScore = rs.next() ? rs.getInt(1) : 100;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to load subject out_of", e);
+        }
+
+        Map<String, Long> admissionToStudentId = getAdmissionToStudentIdMap();
+        List<Mark> marksBatch = new ArrayList<>();
+
+        try (Workbook wb = new XSSFWorkbook(inputPath.toFile())) {
+            Sheet sheet = wb.getSheetAt(0);
+            for (int r = 4; r <= sheet.getLastRowNum(); r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) continue;
+                String adm = getCellString(row.getCell(0));
+                if (adm == null || adm.isBlank()) continue;
+                totalRows++;
+
+                Long studentId;
+                try {
+                    studentId = resolveStudent(adm, admissionToStudentId, row);
+                } catch (Exception e) {
+                    errors.add("Row " + (r + 1) + " (" + adm + "): " + e.getMessage());
+                    continue;
+                }
+                if (studentId == null) continue;
+
+                Cell scoreCell = row.getCell(2);
+                if (scoreCell == null) continue;
+                String scoreStr = getCellString(scoreCell);
+                if (scoreStr == null || scoreStr.isBlank()) continue;
+                try {
+                    double score = Double.parseDouble(scoreStr.trim());
+                    if (!Double.isFinite(score) || score < 0) {
+                        errors.add("Row " + (r + 1) + ": invalid score '" + scoreStr + "'");
+                        continue;
+                    }
+                    if (score > maxScore) {
+                        errors.add("Row " + (r + 1) + ": score " + score + " exceeds maximum " + maxScore);
+                        continue;
+                    }
+                    String gradeResult = analysisService.determineGradeAndPoints(score, subjectId, examId);
+                    String[] parts = gradeResult.split("\\|");
+                    Mark mark = new Mark(examId, studentId, subjectId, score);
+                    mark.setGradeAchieved(parts[0]);
+                    mark.setPointsAchieved(Integer.parseInt(parts[1]));
+                    marksBatch.add(mark);
+                    marksInserted++;
+                } catch (NumberFormatException e) {
+                    errors.add("Row " + (r + 1) + ": invalid score '" + scoreStr + "'");
+                }
+            }
+
+            marksRepo.batchInsert(marksBatch);
+            return new ImportResult(totalRows, marksInserted, errors.size(), errors);
+        } catch (IOException | org.apache.poi.openxml4j.exceptions.InvalidFormatException e) {
+            throw new RuntimeException("Failed to read uploaded Excel file", e);
+        }
+    }
+
     private List<SubjectInfo> getSubjectsForExamAndStream(long examId, int form, String stream) {
         List<SubjectInfo> list = new ArrayList<>();
         String sql = """
@@ -373,6 +488,17 @@ public class ExcelService {
             }
         }
         return null;
+    }
+
+    private String getSubjectName(long subjectId) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT subject_name FROM subjects WHERE id = ?")) {
+            ps.setLong(1, subjectId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getString("subject_name") : "Subject";
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch subject name", e);
+        }
     }
 
     private String getExamInfo(long examId) {

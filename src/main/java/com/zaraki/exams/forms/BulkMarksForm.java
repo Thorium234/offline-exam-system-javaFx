@@ -118,20 +118,30 @@ public class BulkMarksForm {
             if (!validateSelection()) return;
             FileChooser fc = new FileChooser();
             fc.setTitle("Save Excel Template");
-            fc.setInitialFileName("marks_template_form" + formBox.getValue() + "_" + streamBox.getValue() + ".xlsx");
+            int form = formBox.getValue();
+            String stream = streamBox.getValue();
+            if (isTeacher) {
+                String subjName = subjectBox.getValue().split(" - ")[1];
+                fc.setInitialFileName(subjName + "_form" + form + "_" + stream + ".xlsx");
+            } else {
+                fc.setInitialFileName("marks_template_form" + form + "_" + stream + ".xlsx");
+            }
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
             File file = fc.showSaveDialog(stage);
             if (file == null) return;
 
             long examId = parseExamId();
-            int form = formBox.getValue();
-            String stream = streamBox.getValue();
             spinner.setVisible(true);
             statusLabel.setText("Generating template...");
 
             Task<Void> task = new Task<>() {
                 @Override protected Void call() {
-                    excelService.generateTemplate(file.toPath(), examId, form, stream);
+                    if (isTeacher) {
+                        long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
+                        excelService.generateSubjectTemplate(file.toPath(), examId, form, stream, subjectId);
+                    } else {
+                        excelService.generateTemplate(file.toPath(), examId, form, stream);
+                    }
                     return null;
                 }
             };
@@ -141,7 +151,8 @@ public class BulkMarksForm {
                 log("Template generated for Form " + form + " - " + stream);
                 log("Exam: " + examBox.getValue());
                 log("File: " + file.getAbsolutePath());
-                log("Students: " + countStudents(form, stream) + " | Subjects: " + countSubjects());
+                if (isTeacher) log("Subject: " + subjectBox.getValue().split(" - ")[1]);
+                log("Students: " + countStudents(form, stream));
                 log("---");
             });
             task.setOnFailed(ev -> {
@@ -167,6 +178,10 @@ public class BulkMarksForm {
 
             Task<ExcelService.ImportResult> task = new Task<>() {
                 @Override protected ExcelService.ImportResult call() {
+                    if (isTeacher) {
+                        long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
+                        return excelService.processSubjectUpload(file.toPath(), examId, subjectId);
+                    }
                     return excelService.processUpload(file.toPath(), examId);
                 }
             };
