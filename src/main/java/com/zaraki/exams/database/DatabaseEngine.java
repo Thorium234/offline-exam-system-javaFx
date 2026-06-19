@@ -132,6 +132,18 @@ public class DatabaseEngine {
             """);
 
             stmt.execute("""
+                CREATE TABLE IF NOT EXISTS streams (
+                    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                    form   INTEGER NOT NULL CHECK(form BETWEEN 1 AND 4),
+                    stream TEXT    NOT NULL,
+                    UNIQUE(form, stream)
+                );
+            """);
+            try { stmt.executeUpdate(
+                    "INSERT OR IGNORE INTO streams (form, stream) SELECT DISTINCT form, stream FROM students");
+            } catch (SQLException ignored) {}
+
+            stmt.execute("""
                 CREATE TABLE IF NOT EXISTS grading_scales (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     subject_id  INTEGER,

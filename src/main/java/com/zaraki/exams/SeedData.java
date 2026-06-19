@@ -50,11 +50,50 @@ public class SeedData {
     public int seedAll() throws SQLException {
         int total = 0;
         seedSubjects();
+        seedDefaultGrades();
         for (int form = 1; form <= 4; form++) {
             total += seedStudents(form, "A");
             total += seedStudents(form, "B");
         }
         return total;
+    }
+
+    public void seedDefaultGrades() throws SQLException {
+        if (hasDefaultGrades()) return;
+        String sql = "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (NULL,?,?,?,?,?)";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            Object[][] grades = {
+                {80.0, 100.0, "A",  12, "Excellent"},
+                {75.0, 79.0,  "A-", 11, "Very Good"},
+                {70.0, 74.0,  "B+", 10, "Good"},
+                {65.0, 69.0,  "B",  9,  "Good"},
+                {60.0, 64.0,  "B-", 8,  "Fairly Good"},
+                {55.0, 59.0,  "C+", 7,  "Average"},
+                {50.0, 54.0,  "C",  6,  "Average"},
+                {45.0, 49.0,  "C-", 5,  "Below Average"},
+                {40.0, 44.0,  "D+", 4,  "Below Average"},
+                {35.0, 39.0,  "D",  3,  "Weak"},
+                {30.0, 34.0,  "D-", 2,  "Weak"},
+                {0.0,  29.0,  "E",  1,  "Poor"}
+            };
+            for (Object[] g : grades) {
+                ps.setDouble(1, (double) g[0]);
+                ps.setDouble(2, (double) g[1]);
+                ps.setString(3, (String) g[2]);
+                ps.setInt(4, (int) g[3]);
+                ps.setString(5, (String) g[4]);
+                ps.executeUpdate();
+            }
+        }
+    }
+
+    private boolean hasDefaultGrades() throws SQLException {
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM grading_scales WHERE subject_id IS NULL")) {
+            return rs.next() && rs.getInt(1) > 0;
+        }
     }
 
     public void seedSubjects() throws SQLException {

@@ -116,9 +116,9 @@ public class DashboardForm {
             navItems = List.of("Dashboard", "Marks Entry", "Bulk Marks");
         } else {
             navItems = List.of("Dashboard", "Students", "Subjects", "Exams",
-                "Grading Scales", "Users", "Teacher Subjects", "Stream Subjects",
-                "Settings", "Publish", "Marks Entry", "Bulk Marks", "Analysis",
-                "Reports", "Browse Students", "Recycle Bin");
+                "Grading Scales", "Users", "Teacher Subjects", "Streams",
+                "Stream Subjects", "Settings", "Publish", "Marks Entry",
+                "Bulk Marks", "Analysis", "Reports", "Browse Students", "Recycle Bin");
         }
 
         for (String itemName : navItems) {
@@ -183,6 +183,7 @@ public class DashboardForm {
             case "grading_scales" -> showGradingScales();
             case "users" -> showUsers();
             case "teacher_subjects" -> showTeacherSubjects();
+            case "streams" -> showStreams();
             case "stream_subjects" -> showStreamSubjects();
             case "settings" -> showSettings();
             case "publish" -> showPublish();
@@ -539,6 +540,10 @@ public class DashboardForm {
     private void showTeacherSubjects() {
         teacherAssignmentForm = new TeacherAssignmentForm(db);
         setContent(teacherAssignmentForm.getView());
+    }
+
+    private void showStreams() {
+        setContent(new StreamManagementForm(db).getView());
     }
 
     private void showStreamSubjects() {

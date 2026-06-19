@@ -173,6 +173,8 @@ public class StudentBrowserForm {
                 }
                 Platform.runLater(() -> {
                     for (String s : streams) {
+                        HBox streamItem = new HBox(5);
+
                         ToggleButton tb = new ToggleButton(s);
                         tb.setStyle("-fx-background-color: white; -fx-border-color: " + PRIMARY + ";"
                             + " -fx-border-radius: 15; -fx-background-radius: 15;"
@@ -181,6 +183,8 @@ public class StudentBrowserForm {
                         tb.setOnAction(ev -> {
                             if (tb.isSelected()) {
                                 streamCards.getChildren().stream()
+                                    .filter(n -> n instanceof HBox)
+                                    .flatMap(h -> ((HBox)h).getChildren().stream())
                                     .filter(n -> n instanceof ToggleButton && n != tb)
                                     .forEach(n -> ((ToggleButton)n).setSelected(false));
                                 table.setItems(data.filtered(r -> r.streamName.equals(s)));
@@ -189,7 +193,16 @@ public class StudentBrowserForm {
                             }
                             updateStatus(statusLabel, table);
                         });
-                        streamCards.getChildren().add(tb);
+
+                        Button subjBtn = new Button("Subjects");
+                        subjBtn.setStyle("-fx-background-color: " + PRIMARY + "; -fx-text-fill: white;"
+                            + " -fx-font-size: 10; -fx-padding: 4 10 4 10; -fx-background-radius: 12;");
+                        int finalForm = form;
+                        String finalStream = s;
+                        subjBtn.setOnAction(ev -> showSubjectAssignment(finalForm, finalStream));
+
+                        streamItem.getChildren().addAll(tb, subjBtn);
+                        streamCards.getChildren().add(streamItem);
                     }
                     data.setAll(rows);
                     table.setItems(data);
@@ -310,6 +323,20 @@ public class StudentBrowserForm {
                 setGraphic(checkBox);
             }
         }
+    }
+
+    // ───── Subject Assignment Integration ─────
+
+    private void showSubjectAssignment(int form, String stream) {
+        SubjectAssignmentForm saf = new SubjectAssignmentForm(db);
+        saf.loadForStream(form, stream);
+
+        VBox wrapper = new VBox(10);
+        Button backBtn = new Button("← Back to Students");
+        backBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: " + PRIMARY + "; -fx-font-size: 13;");
+        backBtn.setOnAction(e -> showStudentList(form));
+        wrapper.getChildren().addAll(backBtn, saf.getView());
+        setView(wrapper);
     }
 
     // ───── Helpers ─────

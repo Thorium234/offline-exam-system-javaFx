@@ -6,6 +6,7 @@ import javafx.collections.ObservableList;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
@@ -14,6 +15,8 @@ import java.sql.*;
 public class SubjectForm {
 
     private final DatabaseEngine db;
+    private final TableView<SubjectRow> table = new TableView<>();
+    private final ObservableList<SubjectRow> data = FXCollections.observableArrayList();
 
     public SubjectForm(DatabaseEngine db) {
         this.db = db;
@@ -24,6 +27,10 @@ public class SubjectForm {
         Label header = new Label("Subjects");
         header.setFont(Font.font("System", FontWeight.BOLD, 24));
 
+        Label info = new Label("Add new subjects or delete existing ones. Subjects with existing marks or assignments cannot be deleted.");
+        info.setFont(Font.font("System", 13));
+        info.setTextFill(Color.gray(0.5));
+
         HBox form = new HBox(10);
         TextField codeField = new TextField(); codeField.setPromptText("Code");
         TextField nameField = new TextField(); nameField.setPromptText("Name");
@@ -33,7 +40,6 @@ public class SubjectForm {
         Button addBtn = new Button("Add");
         form.getChildren().addAll(codeField, nameField, deptField, grpBox, addBtn);
 
-        TableView<SubjectRow> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         TableColumn<SubjectRow, String> cCode = new TableColumn<>("Code");
         cCode.setCellValueFactory(new PropertyValueFactory<>("code")); cCode.setPrefWidth(100);
@@ -43,11 +49,26 @@ public class SubjectForm {
         cDept.setCellValueFactory(new PropertyValueFactory<>("dept")); cDept.setPrefWidth(150);
         TableColumn<SubjectRow, String> cGrp = new TableColumn<>("Grouping");
         cGrp.setCellValueFactory(new PropertyValueFactory<>("grouping")); cGrp.setPrefWidth(120);
-        table.getColumns().addAll(cCode, cName, cDept, cGrp);
+        TableColumn<SubjectRow, Void> cDel = new TableColumn<>("");
+        cDel.setPrefWidth(60);
+        cDel.setCellFactory(col -> new TableCell<>() {
+            private final Button delBtn = new Button("Delete");
+            { delBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-size: 10;"); }
+            @Override protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    SubjectRow row = (SubjectRow) getTableRow().getItem();
+                    delBtn.setOnAction(e -> deleteSubject(row));
+                    setGraphic(delBtn);
+                }
+            }
+        });
+        table.getColumns().addAll(cCode, cName, cDept, cGrp, cDel);
         table.setPrefHeight(400);
 
-        ObservableList<SubjectRow> data = FXCollections.observableArrayList();
-        load(data);
+        load();
         table.setItems(data);
 
         addBtn.setOnAction(e -> {
@@ -71,20 +92,40 @@ public class SubjectForm {
                 ps.setString(3, dept);
                 ps.setString(4, grp);
                 ps.executeUpdate();
-                load(data);
+                load();
                 codeField.clear(); nameField.clear(); deptField.clear(); grpBox.setValue(null);
             } catch (Exception ex) { showAlert(ex.getMessage()); }
         });
 
-        view.getChildren().addAll(header, form, table);
+        view.getChildren().addAll(header, info, form, table);
         return view;
     }
 
-    private void load(ObservableList<SubjectRow> data) {
+    private void deleteSubject(SubjectRow row) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+            "Delete subject '" + row.code + " - " + row.name + "'?",
+            ButtonType.YES, ButtonType.NO);
+        if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM subjects WHERE subject_code = ?")) {
+            ps.setString(1, row.code);
+            int rows = ps.executeUpdate();
+            if (rows > 0) {
+                load();
+                showInfo("Deleted " + row.code);
+            } else {
+                showAlert("Subject not found or cannot be deleted (may have existing marks/assignments).");
+            }
+        } catch (SQLException ex) {
+            showAlert("Cannot delete: " + ex.getMessage());
+        }
+    }
+
+    private void load() {
         data.clear();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT subject_code, subject_name, department, grouping FROM subjects")) {
+             ResultSet rs = st.executeQuery("SELECT subject_code, subject_name, department, grouping FROM subjects ORDER BY subject_name")) {
             while (rs.next())
                 data.add(new SubjectRow(rs.getString("subject_code"), rs.getString("subject_name"),
                     rs.getString("department"), rs.getString("grouping")));
@@ -92,8 +133,11 @@ public class SubjectForm {
     }
 
     private void showAlert(String msg) {
-        Alert a = new Alert(Alert.AlertType.ERROR, msg);
-        a.showAndWait();
+        javafx.application.Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
+    }
+
+    private void showInfo(String msg) {
+        javafx.application.Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait());
     }
 
     public static class SubjectRow {

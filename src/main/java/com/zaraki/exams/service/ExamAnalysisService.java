@@ -276,20 +276,22 @@ public class ExamAnalysisService {
                     double normalizedScore = score;
                     outOfPs.setLong(1, eId);
                     outOfPs.setLong(2, subjId);
-                    ResultSet oo = outOfPs.executeQuery();
-                    if (oo.next()) {
-                        int outOf = oo.getInt("out_of");
-                        if (outOf > 0 && outOf != 100) normalizedScore = (score / outOf) * 100;
+                    try (ResultSet oo = outOfPs.executeQuery()) {
+                        if (oo.next()) {
+                            int outOf = oo.getInt("out_of");
+                            if (outOf > 0 && outOf != 100) normalizedScore = (score / outOf) * 100;
+                        }
                     }
 
-                    gradePs.setLong(1, subjId);
-                    gradePs.setDouble(2, normalizedScore);
-                    ResultSet gr = gradePs.executeQuery();
                     String grade = null;
                     int points = 0;
-                    if (gr.next()) {
-                        grade = gr.getString("grade");
-                        points = gr.getInt("points");
+                    gradePs.setLong(1, subjId);
+                    gradePs.setDouble(2, normalizedScore);
+                    try (ResultSet gr = gradePs.executeQuery()) {
+                        if (gr.next()) {
+                            grade = gr.getString("grade");
+                            points = gr.getInt("points");
+                        }
                     }
 
                     updatePs.setString(1, grade);
