@@ -250,7 +250,7 @@ public class MarksEntryForm {
             SELECT s.id, s.admission_number, s.full_name, m.score, m.grade_achieved, m.points_achieved
             FROM students s
             LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? AND m.subject_id = ?
-            WHERE s.form = ? AND s.stream = ?
+            WHERE s.form = ? AND s.stream = ? AND s.deallocated = 0
             ORDER BY s.full_name
             """;
         try (Connection conn = db.getConnection();
@@ -381,7 +381,7 @@ public class MarksEntryForm {
 
     private int countStudents(int form, String stream) {
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM students WHERE form = ? AND stream = ?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM students WHERE form = ? AND stream = ? AND deallocated = 0")) {
             ps.setInt(1, form); ps.setString(2, stream);
             ResultSet rs = ps.executeQuery();
             return rs.next() ? rs.getInt(1) : 0;

@@ -221,7 +221,7 @@ public class BulkMarksForm {
 
     private int countStudents(int form, String stream) {
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM students WHERE form = ? AND stream = ?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM students WHERE form = ? AND stream = ? AND deallocated = 0")) {
             ps.setInt(1, form); ps.setString(2, stream);
             ResultSet rs = ps.executeQuery();
             return rs.next() ? rs.getInt(1) : 0;

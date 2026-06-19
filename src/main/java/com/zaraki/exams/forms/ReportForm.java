@@ -205,7 +205,7 @@ public class ReportForm {
         if (q.isEmpty()) { showAlert("Enter a name or admission number."); return; }
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "SELECT id, admission_number, full_name, form, stream FROM students WHERE full_name LIKE ? OR admission_number LIKE ? LIMIT 20")) {
+                 "SELECT id, admission_number, full_name, form, stream FROM students WHERE deallocated = 0 AND (full_name LIKE ? OR admission_number LIKE ?) LIMIT 20")) {
             String like = "%" + q + "%";
             ps.setString(1, like);
             ps.setString(2, like);

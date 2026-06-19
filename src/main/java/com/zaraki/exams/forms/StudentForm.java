@@ -204,7 +204,7 @@ public class StudentForm {
         data.clear();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, admission_number, full_name, form, stream FROM students")) {
+              ResultSet rs = st.executeQuery("SELECT id, admission_number, full_name, form, stream FROM students WHERE deallocated = 0")) {
             while (rs.next())
                 data.add(new StudentRow(rs.getLong("id"), rs.getString("admission_number"),
                     rs.getString("full_name"), rs.getInt("form"), rs.getString("stream")));

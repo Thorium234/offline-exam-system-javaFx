@@ -52,6 +52,8 @@ public class DashboardForm {
     private BulkMarksForm bulkMarksForm;
     private AnalysisForm analysisForm;
     private ReportForm reportForm;
+    private StudentBrowserForm studentBrowserForm;
+    private RecycleBinForm recycleBinForm;
 
     public DashboardForm(Stage stage, String loggedInUser, String loggedInUsername, String loggedInRole, Runnable onLogout) {
         this.stage = stage;
@@ -120,7 +122,9 @@ public class DashboardForm {
             {"Marks Entry", ""},
             {"Bulk Marks", ""},
             {"Analysis", ""},
-            {"Reports", ""}
+            {"Reports", ""},
+            {"Browse Students", ""},
+            {"Recycle Bin", ""}
         };
 
         for (String[] item : items) {
@@ -187,6 +191,8 @@ public class DashboardForm {
             case "bulk_marks" -> showBulkMarks();
             case "analysis" -> showAnalysis();
             case "reports" -> showReports();
+            case "browse_students" -> showStudentBrowser();
+            case "recycle_bin" -> showRecycleBin();
         }
     }
 
@@ -213,6 +219,14 @@ public class DashboardForm {
             statCard("Marks Entered", "…")
         };
         cards.getChildren().addAll(cardBoxes);
+        cardBoxes[0].setOnMouseClicked(e -> showStudentBrowser());
+        cardBoxes[0].setCursor(javafx.scene.Cursor.HAND);
+        cardBoxes[0].setOnMouseEntered(e -> cardBoxes[0].setStyle(
+            "-fx-background-color: #e8eaf6; -fx-background-radius: 10; "
+            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"));
+        cardBoxes[0].setOnMouseExited(e -> cardBoxes[0].setStyle(
+            "-fx-background-color: white; -fx-background-radius: 10; "
+            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);"));
         // Load counts in background
         Task<int[]> countTask = new Task<>() {
             @Override protected int[] call() {
@@ -319,7 +333,7 @@ public class DashboardForm {
                 try (Connection conn = db.getConnection();
                      Statement st = conn.createStatement();
                      ResultSet rs = st.executeQuery(
-                         "SELECT id, admission_number, full_name FROM students ORDER BY admission_number")) {
+                         "SELECT id, admission_number, full_name FROM students WHERE deallocated = 0 ORDER BY admission_number")) {
                     ObservableList<String> items = FXCollections.observableArrayList();
                     while (rs.next())
                         items.add(rs.getLong("id") + " - " + rs.getString("admission_number")
@@ -462,6 +476,16 @@ public class DashboardForm {
     private void showReports() {
         reportForm = new ReportForm(db, stage);
         setContent(reportForm.getView());
+    }
+
+    private void showStudentBrowser() {
+        studentBrowserForm = new StudentBrowserForm(db, this::showDashboard);
+        setContent(studentBrowserForm.getView());
+    }
+
+    private void showRecycleBin() {
+        recycleBinForm = new RecycleBinForm(db, this::showDashboard);
+        setContent(recycleBinForm.getView());
     }
 
     private void setContent(javafx.scene.Node node) {

@@ -330,7 +330,7 @@ public class ExcelService {
         List<String[]> list = new ArrayList<>();
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "SELECT admission_number, full_name FROM students WHERE form = ? AND stream = ? ORDER BY full_name")) {
+                 "SELECT admission_number, full_name FROM students WHERE form = ? AND stream = ? AND deallocated = 0 ORDER BY full_name")) {
             ps.setInt(1, form);
             ps.setString(2, stream);
             ResultSet rs = ps.executeQuery();

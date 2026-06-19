@@ -72,7 +72,7 @@ public class DatabaseEngine {
                 CREATE INDEX IF NOT EXISTS idx_students_admission ON students(admission_number);
                 CREATE INDEX IF NOT EXISTS idx_students_form_stream ON students(form, stream);
             """);
-
+            try { stmt.execute("ALTER TABLE students ADD COLUMN deallocated INTEGER NOT NULL DEFAULT 0"); } catch (SQLException ignored) {}
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS subjects (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,

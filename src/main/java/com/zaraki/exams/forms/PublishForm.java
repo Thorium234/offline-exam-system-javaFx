@@ -351,6 +351,7 @@ public class PublishForm {
             SELECT s.id, s.admission_number, s.full_name, m.score, m.grade_achieved, m.points_achieved
             FROM students s
             LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? AND m.subject_id = ?
+            WHERE s.deallocated = 0
             ORDER BY s.admission_number
             """;
         try (Connection conn = db.getConnection();
@@ -475,7 +476,7 @@ public class PublishForm {
 
                     // Resolve student
                     long studentId;
-                    try (PreparedStatement sp = conn.prepareStatement("SELECT id FROM students WHERE admission_number = ?")) {
+                    try (PreparedStatement sp = conn.prepareStatement("SELECT id FROM students WHERE admission_number = ? AND deallocated = 0")) {
                         sp.setString(1, adm.trim());
                         ResultSet sr = sp.executeQuery();
                         if (!sr.next()) { errors.add("Row " + (r + 1) + ": student " + adm + " not found"); continue; }
@@ -649,9 +650,9 @@ public class PublishForm {
                 Map<String, Long> studentMap = new HashMap<>();
                 String studentSql;
                 if (form != null && stream != null && !stream.isEmpty()) {
-                    studentSql = "SELECT id, admission_number FROM students WHERE form = ? AND stream = ?";
+                    studentSql = "SELECT id, admission_number FROM students WHERE form = ? AND stream = ? AND deallocated = 0";
                 } else {
-                    studentSql = "SELECT id, admission_number FROM students";
+                    studentSql = "SELECT id, admission_number FROM students WHERE deallocated = 0";
                 }
                 try (PreparedStatement ps = db.getConnection().prepareStatement(studentSql)) {
                     if (form != null && stream != null && !stream.isEmpty()) {
@@ -777,7 +778,7 @@ public class PublishForm {
 
                     // Pre-populate students
                     try (PreparedStatement sp = db.getConnection().prepareStatement(
-                            "SELECT admission_number, full_name FROM students WHERE form = ? AND stream = ? ORDER BY admission_number")) {
+                            "SELECT admission_number, full_name FROM students WHERE form = ? AND stream = ? AND deallocated = 0 ORDER BY admission_number")) {
                         sp.setInt(1, form);
                         sp.setString(2, stream);
                         ResultSet sr = sp.executeQuery();
