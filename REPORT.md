@@ -6,7 +6,7 @@ A desktop exam analysis & report card generation system for Kenyan secondary sch
 Offline-first, JavaFX-based GUI with SQLite persistence. Generates professional
 A4 report cards with subject tables, performance trends, and merit lists.
 
-**Version:** 2.0.0  
+**Version:** 2.1.0  
 **Java:** 17+  
 **Build:** Maven (`mvn clean package`) → fat shaded JAR  
 
@@ -71,7 +71,7 @@ src/main/java/com/zaraki/exams/
 
 ---
 
-## 4. Database Schema (7 + 1 tables)
+## 4. Database Schema (9 tables)
 
 All created in `DatabaseEngine.executeDDL()`.
 
@@ -179,7 +179,7 @@ Sidebar → **Settings** → configure:
 - **Optional subjects:** Only students with a `marks` row for a subject are counted in that subject's metrics. Merit list shows "-" for un-taken subjects. Totals count only taken subjects.
 - **Publish workflow:** Two-phase gate — teacher uploads+publishes per subject, admin releases entire exam.
 - **School logo as watermark:** Uses `PdfPageEvent` with `getDirectContentUnder()` and 8% opacity via `PdfGState.setFillOpacity()`.
-- **User search:** Free-text `TextField` with SQL `LIKE` (supports millions of students, no dropdown).
+- **User search:** Free-text `TextField` with SQL `LIKE` (no dropdown). NB: `LIKE '%…%'` does a full table scan — not recommended for very large datasets.
 - **Bulk report PDF:** Single `Document` with `doc.newPage()` between students — same layout as single-student PDF.
 
 ---
@@ -224,6 +224,9 @@ Main.start()
 ## 9. Known Limitations & Future Work
 
 ### High Priority
+- **Zero test coverage:** No unit/integration tests for ranking, grading, PDF gen, or Excel parsing.
+- **Thread-unsafe connection:** `getConnection()` has no synchronization; concurrent Tasks can cause "database is locked" errors.
+- **Weak password hashing:** Single-round SHA-256 (now upgraded to PBKDF2WithHmacSHA256 in v2.1).
 - **Student subject registration:** Need a table to register which subjects each student takes (especially for electives like Computer Studies). Currently the system infers from presence of marks, but this causes issues for report cards showing subjects the student doesn't take.
 - **Per-student subject list:** Report card should list only subjects the student is registered for, not all subjects with marks.
 - **Form/Stream subject assignment:** Need to specify which subjects are offered to which forms/streams (e.g. Physics only in Form 3-4).
@@ -235,6 +238,8 @@ Main.start()
 - **Subject rank improvements:** Show subject rank as fraction (e.g. `5/40`) in all views.
 - **Password change:** Users can't change their own password from within the app.
 - **Report card template editor:** Allow customizing PDF layout (colors, fonts, sections) from UI.
+- **DB queries on FX thread:** Multiple forms load data on the JavaFX Application Thread (DashboardForm, MarksEntryForm, ReportForm, etc.).
+- **Duplicate merit list logic:** The same algorithm appears in both `AnalysisForm` and `ReportCardGenerator` (~300 lines duplicated).
 
 ### Low Priority  
 - **Print directly from app:** Currently saves PDF to file only.
@@ -244,6 +249,8 @@ Main.start()
 - **Analytics dashboard:** Trend charts currently per-student; no aggregate school-wide trends.
 - **REST API:** No network API; would require architectural changes.
 - **Cloud sync:** Would require conflict resolution for offline-first model.
+- **No pagination on student search:** Search limited to 20 results with no "next page" control.
+- **UI allows creating exams without subjects:** No validation that subjects exist before exam creation.
 
 ---
 
@@ -257,12 +264,28 @@ mvn clean compile
 mvn clean package -DskipTests
 
 # Run
-java -jar target/exam-analysis-2.0.0.jar
+java -jar target/exam-analysis-2.1.0.jar
 
 # The JAR is self-contained (shades all dependencies including JavaFX,
 # SQLite, OpenPDF, Apache POI)
 ```
 
 ---
+
+## Changelog
+
+### v2.1.0 (2026-06-19)
+- **Security:** Replaced SHA-256 password hashing with PBKDF2WithHmacSHA256 (600K iterations)
+- **Security:** Added column whitelist validation to prevent SQL injection via filter column names
+- **Bugfix:** Fixed thread-unsafe database connection — `getConnection()` now properly synchronized
+- **Bugfix:** Fixed mutable static PDF watermark causing corrupted images in concurrent PDF generation
+- **Bugfix:** Removed duplicate `INSERT_BATCH_SQL` string; single insert now delegates to batch insert
+- **Bugfix:** File upload now validates image extensions before saving
+- **Quality:** Added `equals()` / `hashCode()` to all 5 POJO models
+- **Quality:** Added JUnit 5 + Mockito test infrastructure with unit tests for PasswordUtils, DatabaseEngine, ExamAnalysisService
+- **Quality:** Removed dead code (unused `Label` in GradingScaleForm.refresh())
+- **Docs:** Updated README.md with accurate version, features, and project structure
+- **Docs:** Corrected REPORT.md inaccuracies (table count 7→9, LIKE performance caveat, version)
+- **Chore:** Updated `.gitignore` to exclude generated PDFs, school assets, and dependency-reduced-pom.xml
 
 *Generated: 2026-06-19 — Update this document when adding major features.*

@@ -43,3 +43,13 @@ Thumbs.db
 # Logs
 *.log
 REPORT.MD
+
+# Maven shade plugin artifact
+dependency-reduced-pom.xml
+
+# Generated PDFs
+*.pdf
+
+# Generated school assets
+school_logo.*
+school_stamp.*

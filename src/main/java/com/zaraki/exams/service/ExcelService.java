@@ -1,6 +1,7 @@
 package com.zaraki.exams.service;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
 import com.zaraki.exams.model.Mark;
 import com.zaraki.exams.repository.MarksRepository;
 import org.apache.poi.ss.usermodel.*;
@@ -49,6 +50,7 @@ public class ExcelService {
     }
 
     public void generateStudentListExcel(Path outputPath, String filterCol, String filterValue) {
+        filterCol = validateFilterColumn(filterCol);
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet("Student List");
             Row headerRow = sheet.createRow(0);

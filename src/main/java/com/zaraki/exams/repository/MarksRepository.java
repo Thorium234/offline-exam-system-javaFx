@@ -17,11 +17,6 @@ public class MarksRepository {
         VALUES (?, ?, ?, ?, ?, ?)
     """;
 
-    private static final String INSERT_BATCH_SQL = """
-        INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """;
-
     private final DatabaseEngine db;
 
     public MarksRepository() {
@@ -29,18 +24,7 @@ public class MarksRepository {
     }
 
     public void insert(Mark mark) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(INSERT_SQL)) {
-            ps.setLong(1, mark.getExamId());
-            ps.setLong(2, mark.getStudentId());
-            ps.setLong(3, mark.getSubjectId());
-            ps.setDouble(4, mark.getScore());
-            ps.setString(5, mark.getGradeAchieved());
-            ps.setObject(6, mark.getPointsAchieved() > 0 ? mark.getPointsAchieved() : null);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to insert mark", e);
-        }
+        batchInsert(List.of(mark));
     }
 
     public void batchInsert(Collection<Mark> marks) {
@@ -49,7 +33,7 @@ public class MarksRepository {
         Connection conn = db.getConnection();
         try {
             conn.setAutoCommit(false);
-            try (PreparedStatement ps = conn.prepareStatement(INSERT_BATCH_SQL)) {
+                    try (PreparedStatement ps = conn.prepareStatement(INSERT_SQL)) {
                 int count = 0;
                 for (Mark mark : marks) {
                     ps.setLong(1, mark.getExamId());

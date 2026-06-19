@@ -1,5 +1,7 @@
 package com.zaraki.exams.model;
 
+import java.util.Objects;
+
 public class Subject {
     private Long id;
     private String subjectCode;
@@ -30,4 +32,16 @@ public class Subject {
 
     public String getGrouping() { return grouping; }
     public void setGrouping(String grouping) { this.grouping = grouping; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Subject subject)) return false;
+        return Objects.equals(id, subject.id) && Objects.equals(subjectCode, subject.subjectCode) && Objects.equals(subjectName, subject.subjectName) && Objects.equals(department, subject.department) && Objects.equals(grouping, subject.grouping);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, subjectCode, subjectName, department, grouping);
+    }
 }

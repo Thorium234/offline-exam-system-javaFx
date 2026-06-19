@@ -1,5 +1,7 @@
 package com.zaraki.exams.model;
 
+import java.util.Objects;
+
 public class Student {
     private Long id;
     private String admissionNumber;
@@ -35,4 +37,16 @@ public class Student {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Student student)) return false;
+        return form == student.form && Objects.equals(id, student.id) && Objects.equals(admissionNumber, student.admissionNumber) && Objects.equals(fullName, student.fullName) && Objects.equals(stream, student.stream) && Objects.equals(status, student.status);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, admissionNumber, fullName, form, stream, status);
+    }
 }

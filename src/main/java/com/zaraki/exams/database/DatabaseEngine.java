@@ -38,10 +38,11 @@ public class DatabaseEngine {
         return instance;
     }
 
-    public Connection getConnection() {
+    public synchronized Connection getConnection() {
         try {
             if (connection == null || connection.isClosed()) {
                 connection = DriverManager.getConnection(DB_URL);
+                initializePragmas();
             }
             return connection;
         } catch (SQLException e) {
@@ -194,6 +195,14 @@ public class DatabaseEngine {
                 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_user ON teacher_subjects(user_id);
             """);
         }
+    }
+
+    private static final java.util.Set<String> ALLOWED_FILTER_COLUMNS = java.util.Set.of("form", "stream", "");
+
+    public static String validateFilterColumn(String col) {
+        if (!ALLOWED_FILTER_COLUMNS.contains(col))
+            throw new IllegalArgumentException("Invalid filter column: " + col);
+        return col;
     }
 
     public synchronized void close() {

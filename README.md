@@ -1,18 +1,20 @@
-# Zaraki Exam Analysis System
+# Thorium Exam Analysis System v2
 
-A lightweight, offline-first desktop GUI application for analyzing exam results and generating report forms in Kenyan secondary schools.
+A lightweight, offline-first desktop GUI application for analyzing exam results and generating professional A4 report cards in Kenyan secondary schools.
 
-Built with **Java 17+, JavaFX, SQLite, and Maven**.
+Built with **Java 17+, JavaFX, SQLite, OpenPDF, and Maven**.
 
 ## Features
 
 - **Student Management** — Register and view students across forms (1–4) and streams
 - **Subject Configuration** — Define subjects with departments and groupings (Compulsory/Elective)
 - **Exam Setup** — Academic year, term, and exam series management
-- **Marks Entry** — Enter scores per exam with a cross-join grid of students and subjects
+- **Marks Entry** — Enter scores per exam with auto-grade, or bulk upload via Excel
 - **Batch Mark Entry** — High-performance bulk insert via SQLite transactions
-- **Dashboard** — Overview counts of students, subjects, exams, and marks
-- **PDF Report Forms** — *(coming soon)* Generate A4 report cards with subject breakdown and positions
+- **Publish / Release Workflow** — Two-phase gate: teacher publishes per subject, admin releases exam
+- **Analysis** — Broadsheet, subject metrics, grade distribution, most improved/dropped, merit list
+- **PDF Report Cards** — A4 report cards with subject tables, performance trend chart, and rubber stamp
+- **School Settings** — Configure school name, term dates, logo watermark, and stamp
 
 ## Tech Stack
 
@@ -44,7 +46,7 @@ mvn clean package
 mvn javafx:run
 
 # Using the packaged JAR directly
-java -jar target/exam-analysis-1.0.0.jar
+java -jar target/exam-analysis-2.0.0.jar
 ```
 
 The database file `exam_analysis.db` is created automatically in the project root on first launch.
@@ -53,18 +55,39 @@ The database file `exam_analysis.db` is created automatically in the project roo
 
 ```
 src/main/java/com/zaraki/exams/
+├── Launcher.java               — Bootstrap entry point
+├── Main.java                   — JavaFX Application, login → dashboard
+├── SeedData.java               — Demo data generator
+├── auth/
+│   ├── LoginForm.java
+│   ├── UserManagementForm.java
+│   └── PasswordUtils.java
+├── config/
+│   ├── SettingsManager.java
+│   └── CurriculumSystem.java
 ├── database/
-│   └── DatabaseEngine.java     — Schema bootstrap & connection management
-├── model/
-│   ├── Exam.java
-│   ├── GradingScale.java
-│   ├── Mark.java
-│   ├── Student.java
-│   └── Subject.java
+│   └── DatabaseEngine.java     — Singleton, DDL, connection management
+├── forms/
+│   ├── AnalysisForm.java       — 5-tab analysis
+│   ├── BulkMarksForm.java
+│   ├── DashboardForm.java
+│   ├── ExamForm.java
+│   ├── GradingScaleForm.java
+│   ├── MarksEntryForm.java
+│   ├── PublishForm.java
+│   ├── ReportForm.java
+│   ├── SchoolSettingsForm.java
+│   ├── StudentForm.java
+│   ├── SubjectForm.java
+│   └── TeacherAssignmentForm.java
+├── model/                      — 5 POJOs
 ├── repository/
-│   └── MarksRepository.java    — Batch mark entry & data access
-├── Launcher.java               — Entry point (calls Main.launch)
-└── Main.java                   — JavaFX Application with full GUI
+│   └── MarksRepository.java
+├── reporting/
+│   └── ReportCardGenerator.java
+└── service/
+    ├── ExamAnalysisService.java
+    └── ExcelService.java
 ```
 
 ## License

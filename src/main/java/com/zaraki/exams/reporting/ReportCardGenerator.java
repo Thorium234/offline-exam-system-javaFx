@@ -5,6 +5,7 @@ import com.lowagie.text.Font;
 import com.lowagie.text.pdf.*;
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
+import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
 
 import java.awt.*;
 import java.io.FileOutputStream;
@@ -32,33 +33,35 @@ public class ReportCardGenerator {
         SettingsManager sm = new SettingsManager();
         String logoPath = sm.getLogoPath();
         if (logoPath != null && !logoPath.isBlank()) {
-            try { backgroundLogo = com.lowagie.text.Image.getInstance(logoPath); }
-            catch (Exception ignored) {}
+            try {
+                java.nio.file.Path p = java.nio.file.Paths.get(logoPath);
+                if (java.nio.file.Files.exists(p))
+                    backgroundLogoBytes = java.nio.file.Files.readAllBytes(p);
+            } catch (Exception ignored) {}
         }
     }
 
-    private static com.lowagie.text.Image backgroundLogo;
+    private static byte[] backgroundLogoBytes;
 
     private static class LogoBackground extends PdfPageEventHelper {
         @Override
         public void onStartPage(PdfWriter writer, Document doc) {
-            if (backgroundLogo == null) return;
+            if (backgroundLogoBytes == null) return;
             try {
+                com.lowagie.text.Image logo = com.lowagie.text.Image.getInstance(backgroundLogoBytes);
                 PdfContentByte cb = writer.getDirectContentUnder();
                 float pageW = doc.getPageSize().getWidth();
                 float pageH = doc.getPageSize().getHeight();
-                float scale = Math.min(pageW / backgroundLogo.getWidth(), pageH / backgroundLogo.getHeight()) * 0.4f;
-                backgroundLogo.scalePercent(scale * 100);
-                float x = (pageW - backgroundLogo.getScaledWidth()) / 2;
-                float y = (pageH - backgroundLogo.getScaledHeight()) / 2;
+                float scale = Math.min(pageW / logo.getWidth(), pageH / logo.getHeight()) * 0.4f;
+                logo.scalePercent(scale * 100);
+                float x = (pageW - logo.getScaledWidth()) / 2;
+                float y = (pageH - logo.getScaledHeight()) / 2;
                 cb.saveState();
                 PdfGState gs = new PdfGState();
                 gs.setFillOpacity(0.08f);
                 cb.setGState(gs);
-                cb.addImage(backgroundLogo, backgroundLogo.getScaledWidth(), 0, 0, backgroundLogo.getScaledHeight(), x, y);
+                cb.addImage(logo, logo.getScaledWidth(), 0, 0, logo.getScaledHeight(), x, y);
                 cb.restoreState();
-                // Reset scale for next use
-                backgroundLogo.scalePercent(100);
             } catch (Exception ignored) {}
         }
     }
@@ -436,7 +439,7 @@ public class ReportCardGenerator {
     }
 
     public void generateBulkStudentReports(long examId, String groupBy, String groupValue, Path outputPath) {
-        String filterCol = groupBy.equals("stream") ? "stream" : "form";
+        String filterCol = DatabaseEngine.validateFilterColumn(groupBy.equals("stream") ? "stream" : "form");
         List<Long> studentIds = new ArrayList<>();
         String studentSql = "SELECT id FROM students WHERE " + filterCol + " = ? ORDER BY admission_number";
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(studentSql)) {
@@ -472,6 +475,7 @@ public class ReportCardGenerator {
     }
 
     public void generateStudentListPdf(String filterCol, String filterValue, Path outputPath) {
+        filterCol = validateFilterColumn(filterCol);
         Document doc = new Document(PageSize.A4, 30, 30, 30, 30);
         try {
             PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
@@ -607,7 +611,7 @@ public class ReportCardGenerator {
             }
 
             // Fetch data
-            String filterCol = groupBy.equals("stream") ? "stream" : "form";
+            String filterCol = validateFilterColumn(groupBy.equals("stream") ? "stream" : "form");
             String dataSql = "SELECT s.id, s.admission_number, s.full_name, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + filterCol + " = ? ORDER BY s.id, m.subject_id";
             Map<Long, String[]> studentInfo = new LinkedHashMap<>(); // id -> [adm, name]
             Map<Long, Map<Long, Double>> scores = new HashMap<>();

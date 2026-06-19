@@ -1,5 +1,7 @@
 package com.zaraki.exams.model;
 
+import java.util.Objects;
+
 public class Mark {
     private long examId;
     private long studentId;
@@ -34,4 +36,16 @@ public class Mark {
 
     public int getPointsAchieved() { return pointsAchieved; }
     public void setPointsAchieved(int pointsAchieved) { this.pointsAchieved = pointsAchieved; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Mark mark)) return false;
+        return examId == mark.examId && studentId == mark.studentId && subjectId == mark.subjectId;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(examId, studentId, subjectId);
+    }
 }

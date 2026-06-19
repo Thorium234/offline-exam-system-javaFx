@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
 import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
@@ -464,7 +465,7 @@ public class AnalysisForm {
     }
 
     private void loadMeritTable(long examId, String groupBy, String groupValue) {
-        String filterCol = groupBy.equals("stream") ? "stream" : "form";
+        String filterCol = validateFilterColumn(groupBy.equals("stream") ? "stream" : "form");
 
         // Subjects
         List<SubjInfo> subjects = new ArrayList<>();

@@ -151,7 +151,6 @@ public class GradingScaleForm {
 
     public void refresh() {
         load();
-        Label info = new Label();
     }
 
     private void load() {

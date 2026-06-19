@@ -105,7 +105,12 @@ public class SchoolSettingsForm {
             File f = fc.showOpenDialog(null);
             if (f != null) {
                 try {
-                    File dest = new File("school_logo" + f.getName().substring(f.getName().lastIndexOf('.')));
+                    String ext = f.getName().substring(f.getName().lastIndexOf('.'));
+                    if (!ext.matches("\\.(png|jpg|jpeg|gif)")) {
+                        showAlert("Invalid image format: " + ext);
+                        return;
+                    }
+                    File dest = new File(System.getProperty("user.dir"), "school_logo" + ext);
                     Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     logoPathField.setText(dest.getAbsolutePath());
                     logoPreview.setImage(new Image(new FileInputStream(dest)));
@@ -121,7 +126,12 @@ public class SchoolSettingsForm {
             File f = fc.showOpenDialog(null);
             if (f != null) {
                 try {
-                    File dest = new File("school_stamp" + f.getName().substring(f.getName().lastIndexOf('.')));
+                    String ext = f.getName().substring(f.getName().lastIndexOf('.'));
+                    if (!ext.matches("\\.(png|jpg|jpeg|gif)")) {
+                        showAlert("Invalid image format: " + ext);
+                        return;
+                    }
+                    File dest = new File(System.getProperty("user.dir"), "school_stamp" + ext);
                     Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     stampPathField.setText(dest.getAbsolutePath());
                     stampPreview.setImage(new Image(new FileInputStream(dest)));

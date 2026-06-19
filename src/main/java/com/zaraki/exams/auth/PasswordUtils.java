@@ -1,11 +1,16 @@
 package com.zaraki.exams.auth;
 
-import java.security.MessageDigest;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Base64;
 
 public class PasswordUtils {
+
+    private static final int ITERATIONS = 600_000;
+    private static final int KEY_LENGTH = 256;
 
     public static String generateSalt() {
         byte[] salt = new byte[16];
@@ -15,12 +20,13 @@ public class PasswordUtils {
 
     public static String hashPassword(String password, String salt) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            md.update(salt.getBytes());
-            byte[] hash = md.digest(password.getBytes());
+            byte[] saltBytes = Base64.getDecoder().decode(salt);
+            PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), saltBytes, ITERATIONS, KEY_LENGTH);
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            byte[] hash = factory.generateSecret(spec).getEncoded();
             return Base64.getEncoder().encodeToString(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+            throw new RuntimeException("PBKDF2 not available", e);
         }
     }
 

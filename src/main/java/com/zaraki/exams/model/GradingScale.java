@@ -1,5 +1,7 @@
 package com.zaraki.exams.model;
 
+import java.util.Objects;
+
 public class GradingScale {
     private Long id;
     private Long subjectId;
@@ -41,4 +43,16 @@ public class GradingScale {
 
     public String getRemarks() { return remarks; }
     public void setRemarks(String remarks) { this.remarks = remarks; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof GradingScale that)) return false;
+        return Double.compare(minimumMark, that.minimumMark) == 0 && Double.compare(maximumMark, that.maximumMark) == 0 && points == that.points && Objects.equals(id, that.id) && Objects.equals(subjectId, that.subjectId) && Objects.equals(grade, that.grade) && Objects.equals(remarks, that.remarks);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, subjectId, minimumMark, maximumMark, grade, points, remarks);
+    }
 }
