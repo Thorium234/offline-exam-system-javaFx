@@ -657,24 +657,22 @@ public class ReportCardGenerator {
             List<Long> subjIds = subjects.stream().map(com.zaraki.exams.service.ExamAnalysisService.MeritSubject::id).toList();
             List<String> subjCodes = subjects.stream().map(s -> s.code() != null && !s.code().isBlank() ? s.code() : "S" + (subjects.indexOf(s) + 1)).toList();
 
-            int colCount = 3 + subjIds.size() * 3 + 4;
+            int colCount = 2 + subjIds.size() * 2 + 5;
             PdfPTable table = new PdfPTable(colCount);
             table.setWidthPercentage(100);
             float[] widths = new float[colCount];
-            widths[0] = 1.5f; widths[1] = 3f; widths[2] = 5f;
-            int idx = 3;
+            widths[0] = 3f; widths[1] = 5f;
+            int idx = 2;
             for (int i = 0; i < subjIds.size(); i++) {
-                widths[idx++] = 1.8f; widths[idx++] = 1.5f; widths[idx++] = 1.2f;
+                widths[idx++] = 1.8f; widths[idx++] = 1.2f;
             }
-            widths[idx++] = 2f; widths[idx++] = 1.5f; widths[idx++] = 1.5f; widths[idx] = 1.2f;
+            widths[idx++] = 1.5f; widths[idx++] = 2f; widths[idx++] = 1.5f; widths[idx++] = 1.5f; widths[idx] = 1.2f;
             try { table.setWidths(widths); } catch (Exception ignored) {}
 
             Font hf = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7, Color.WHITE);
             Color headerBg = new Color(26, 35, 126);
 
-            PdfPCell hCell = new PdfPCell(new Phrase("#", hf));
-            hCell.setBackgroundColor(headerBg); hCell.setPadding(3); table.addCell(hCell);
-            hCell = new PdfPCell(new Phrase("Adm", hf));
+            PdfPCell hCell = new PdfPCell(new Phrase("Adm", hf));
             hCell.setBackgroundColor(headerBg); hCell.setPadding(3); table.addCell(hCell);
             hCell = new PdfPCell(new Phrase("Name", hf));
             hCell.setBackgroundColor(headerBg); hCell.setPadding(3); table.addCell(hCell);
@@ -683,20 +681,17 @@ public class ReportCardGenerator {
                 String label = code.length() > 5 ? code.substring(0, 5) : code;
                 PdfPCell sc = new PdfPCell(new Phrase(label, hf));
                 sc.setBackgroundColor(headerBg); sc.setPadding(3); table.addCell(sc);
-                PdfPCell dc = new PdfPCell(new Phrase("Dev", hf));
-                dc.setBackgroundColor(headerBg); dc.setPadding(3); table.addCell(dc);
                 PdfPCell pc = new PdfPCell(new Phrase("Pos", hf));
                 pc.setBackgroundColor(headerBg); pc.setPadding(3); table.addCell(pc);
             }
 
-            for (String agg : new String[]{"T.Mks", "Pts", "Mean", "Gr"}) {
+            for (String agg : new String[]{"Dev", "T.Mks", "Pos", "Mean", "Gr"}) {
                 PdfPCell ac = new PdfPCell(new Phrase(agg, hf));
                 ac.setBackgroundColor(headerBg); ac.setPadding(3); table.addCell(ac);
             }
 
             Font rf = FontFactory.getFont(FontFactory.HELVETICA, 7);
             for (var student : students) {
-                table.addCell(new Phrase(String.valueOf(student.rank()), rf));
                 table.addCell(new Phrase(student.admissionNumber(), rf));
                 table.addCell(new Phrase(student.fullName(), rf));
 
@@ -705,25 +700,26 @@ public class ReportCardGenerator {
                     boolean tookSubject = studentScores.containsKey(subjId);
                     if (tookSubject) {
                         double score = studentScores.get(subjId);
-                        double dev = student.deviations().getOrDefault(subjId, 0.0);
                         int pos = student.subjectPositions().getOrDefault(subjId, 0);
                         table.addCell(new Phrase(String.valueOf(score), rf));
-                        table.addCell(new Phrase(dev != 0 ? String.valueOf(dev) : "0", rf));
                         table.addCell(new Phrase(String.valueOf(pos), rf));
                     } else {
                         table.addCell(new Phrase("-", rf));
                         table.addCell(new Phrase("-", rf));
-                        table.addCell(new Phrase("-", rf));
                     }
                 }
+
+                var devs = student.deviations();
+                double overallDev = devs.isEmpty() ? 0 : Math.round(devs.values().stream().mapToDouble(v -> v).average().orElse(0) * 10.0) / 10.0;
 
                 int subjCount = (int) student.scores().values().stream().filter(v -> v > 0).count();
                 if (subjCount == 0) subjCount = student.scores().size();
                 double meanPts = subjCount > 0 ? Math.round((double) student.totalPoints() / subjCount * 10.0) / 10.0 : 0;
                 String grade = meanPts >= 12 ? "A" : meanPts >= 11 ? "A-" : meanPts >= 10 ? "B+" : meanPts >= 9 ? "B" : meanPts >= 8 ? "B-" : meanPts >= 7 ? "C+" : meanPts >= 6 ? "C" : meanPts >= 5 ? "C-" : meanPts >= 4 ? "D+" : meanPts >= 3 ? "D" : meanPts >= 2 ? "D-" : "E";
 
+                table.addCell(new Phrase(overallDev != 0 ? String.valueOf(overallDev) : "0", rf));
                 table.addCell(new Phrase(String.valueOf(student.totalMarks()), rf));
-                table.addCell(new Phrase(String.valueOf(student.totalPoints()), rf));
+                table.addCell(new Phrase(String.valueOf(student.rank()), rf));
                 table.addCell(new Phrase(String.valueOf(meanPts), rf));
                 table.addCell(new Phrase(grade, rf));
             }

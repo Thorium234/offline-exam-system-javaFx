@@ -709,7 +709,7 @@ public class PublishForm {
                             continue;
                         }
 
-                        String scoreStr = getCellString(row.getCell(1));
+                        String scoreStr = getCellString(row.getCell(2));
                         if (scoreStr == null || scoreStr.isBlank()) continue;
                         double score;
                         try { score = Double.parseDouble(scoreStr.trim()); }
@@ -800,11 +800,12 @@ public class PublishForm {
                     Sheet sheet = wb.createSheet(sheetLabel);
                     Row hdr = sheet.createRow(0);
                     hdr.createCell(0).setCellValue("Admission No.");
-                    hdr.createCell(1).setCellValue("Score (Enter marks)");
+                    hdr.createCell(1).setCellValue("Student Name");
+                    hdr.createCell(2).setCellValue(subjectName + " Marks");
 
                     // Pre-populate students
                     try (PreparedStatement sp = db.getConnection().prepareStatement(
-                            "SELECT admission_number, full_name FROM students WHERE form = ? AND stream = ? AND deallocated = 0 ORDER BY admission_number")) {
+                            "SELECT admission_number, full_name FROM students WHERE form = ? AND stream = ? AND deallocated = 0 ORDER BY full_name")) {
                         sp.setInt(1, form);
                         sp.setString(2, stream);
                         ResultSet sr = sp.executeQuery();
@@ -812,10 +813,12 @@ public class PublishForm {
                         while (sr.next()) {
                             Row row = sheet.createRow(r++);
                             row.createCell(0).setCellValue(sr.getString("admission_number"));
+                            row.createCell(1).setCellValue(sr.getString("full_name"));
                         }
                     }
                     sheet.autoSizeColumn(0);
                     sheet.autoSizeColumn(1);
+                    sheet.autoSizeColumn(2);
                 }
                 if (!hasSheets) { showAlert("This teacher has no subject assignments."); return; }
             }

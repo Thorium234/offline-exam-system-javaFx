@@ -484,47 +484,48 @@ public class AnalysisForm {
 
         // Build TableView
         meritTable.getColumns().clear();
-        TableColumn<ExamAnalysisService.MeritStudent, Number> cPos = new TableColumn<>("#");
-        cPos.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().rank()));
-        cPos.setPrefWidth(35);
         TableColumn<ExamAnalysisService.MeritStudent, String> cAdm = new TableColumn<>("Adm");
         cAdm.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().admissionNumber()));
         cAdm.setPrefWidth(80);
         TableColumn<ExamAnalysisService.MeritStudent, String> cName = new TableColumn<>("Name");
         cName.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().fullName()));
         cName.setPrefWidth(140);
-        meritTable.getColumns().addAll(cPos, cAdm, cName);
+        meritTable.getColumns().addAll(cAdm, cName);
 
         for (ExamAnalysisService.MeritSubject si : subjects) {
             String label = si.code() != null && !si.code().isBlank() ? si.code() : si.name().substring(0, Math.min(4, si.name().length()));
             TableColumn<ExamAnalysisService.MeritStudent, String> parentCol = new TableColumn<>(label);
+            long subjId = si.id();
             TableColumn<ExamAnalysisService.MeritStudent, Number> scrCol = new TableColumn<>("Scr");
             scrCol.setPrefWidth(45);
-            long subjId = si.id();
             scrCol.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().scores().getOrDefault(subjId, 0.0)));
-            TableColumn<ExamAnalysisService.MeritStudent, Number> devCol = new TableColumn<>("Dev");
-            devCol.setPrefWidth(45);
-            devCol.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().deviations().getOrDefault(subjId, 0.0)));
             TableColumn<ExamAnalysisService.MeritStudent, Number> posCol = new TableColumn<>("Pos");
             posCol.setPrefWidth(35);
             posCol.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().subjectPositions().getOrDefault(subjId, 0)));
-            parentCol.getColumns().addAll(scrCol, devCol, posCol);
+            parentCol.getColumns().addAll(scrCol, posCol);
             meritTable.getColumns().add(parentCol);
         }
 
+        TableColumn<ExamAnalysisService.MeritStudent, Number> cDeviation = new TableColumn<>("Dev");
+        cDeviation.setPrefWidth(50);
+        cDeviation.setCellValueFactory(cd -> {
+            var devs = cd.getValue().deviations();
+            double avg = devs.isEmpty() ? 0 : devs.values().stream().mapToDouble(v -> v).average().orElse(0);
+            return new SimpleObjectProperty<>(Math.round(avg * 10.0) / 10.0);
+        });
         TableColumn<ExamAnalysisService.MeritStudent, Number> cMarks = new TableColumn<>("T.Mks");
         cMarks.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().totalMarks()));
         cMarks.setPrefWidth(55);
-        TableColumn<ExamAnalysisService.MeritStudent, Number> cPts = new TableColumn<>("Pts");
-        cPts.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().totalPoints()));
-        cPts.setPrefWidth(45);
+        TableColumn<ExamAnalysisService.MeritStudent, Number> cPos = new TableColumn<>("Pos");
+        cPos.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().rank()));
+        cPos.setPrefWidth(40);
         TableColumn<ExamAnalysisService.MeritStudent, Number> cMean = new TableColumn<>("Mean");
         cMean.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().meanPoints()));
         cMean.setPrefWidth(50);
         TableColumn<ExamAnalysisService.MeritStudent, String> cGrade = new TableColumn<>("Gr");
         cGrade.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().meanGrade()));
         cGrade.setPrefWidth(40);
-        meritTable.getColumns().addAll(cMarks, cPts, cMean, cGrade);
+        meritTable.getColumns().addAll(cDeviation, cMarks, cPos, cMean, cGrade);
 
         meritTable.setItems(FXCollections.observableArrayList(students));
     }
