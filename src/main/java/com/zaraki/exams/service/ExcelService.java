@@ -11,6 +11,7 @@ import java.io.*;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class ExcelService {
 
@@ -323,6 +324,178 @@ public class ExcelService {
             throw new RuntimeException("Failed to read uploaded Excel file", e);
         }
     }
+
+    public void generateTeacherMultiSheetTemplate(Path outputPath, long examId, long userId) {
+        String examInfo = getExamInfo(examId);
+
+        List<TeacherAssignment> assignments = new ArrayList<>();
+        String sql = """
+            SELECT ts.subject_id, s.subject_name, s.subject_code, ts.form, ts.stream
+            FROM teacher_subjects ts
+            JOIN subjects s ON s.id = ts.subject_id
+            WHERE ts.user_id = ?
+            ORDER BY s.subject_name, ts.form, ts.stream
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, userId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                assignments.add(new TeacherAssignment(
+                    rs.getLong("subject_id"),
+                    rs.getString("subject_code"),
+                    rs.getString("subject_name"),
+                    rs.getInt("form"),
+                    rs.getString("stream")
+                ));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to load teacher assignments", e);
+        }
+
+        if (assignments.isEmpty()) {
+            throw new RuntimeException("No subject assignments found for this teacher");
+        }
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            Set<String> usedNames = new HashSet<>();
+            for (TeacherAssignment ta : assignments) {
+                String baseName = "S" + ta.subjectId() + "_" + ta.subjectName() + "_F" + ta.form() + "_" + ta.stream();
+                String sheetName = baseName.length() > 31 ? baseName.substring(0, 31) : baseName;
+                String uniqueName = sheetName;
+                int counter = 1;
+                while (usedNames.contains(uniqueName)) {
+                    String suffix = "_" + (counter++);
+                    uniqueName = (sheetName.length() > 31 - suffix.length() ? sheetName.substring(0, 31 - suffix.length()) : sheetName) + suffix;
+                }
+                usedNames.add(uniqueName);
+
+                Sheet sheet = wb.createSheet(uniqueName);
+
+                Row header0 = sheet.createRow(0);
+                Cell c0 = header0.createCell(0);
+                c0.setCellValue("EXAM: " + examInfo);
+                c0.setCellStyle(boldStyle(wb));
+
+                Row header1 = sheet.createRow(1);
+                Cell c1 = header1.createCell(0);
+                c1.setCellValue("SUBJECT: " + ta.subjectName() + " | Form " + ta.form() + " - " + ta.stream());
+                c1.setCellStyle(boldStyle(wb));
+
+                Row headerRow = sheet.createRow(3);
+                String[] cols = {"Admission No.", "Student Name", ta.subjectName() + " Marks"};
+                for (int i = 0; i < cols.length; i++) {
+                    Cell cell = headerRow.createCell(i);
+                    cell.setCellValue(cols[i]);
+                    cell.setCellStyle(boldStyle(wb));
+                }
+
+                List<String[]> students = getStudents(ta.form(), ta.stream());
+                for (int r = 0; r < students.size(); r++) {
+                    Row row = sheet.createRow(4 + r);
+                    row.createCell(0).setCellValue(students.get(r)[0]);
+                    row.createCell(1).setCellValue(students.get(r)[1]);
+                }
+
+                sheet.autoSizeColumn(0);
+                sheet.autoSizeColumn(1);
+                sheet.autoSizeColumn(2);
+            }
+
+            try (FileOutputStream fos = new FileOutputStream(outputPath.toFile())) {
+                wb.write(fos);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to generate teacher multi-sheet template", e);
+        }
+    }
+
+    public ImportResult processTeacherMultiSheetUpload(Path inputPath, long examId) {
+        List<String> errors = new ArrayList<>();
+        int marksInserted = 0;
+        int totalRows = 0;
+
+        Map<String, Long> admissionToStudentId = getAdmissionToStudentIdMap();
+
+        try (Workbook wb = new XSSFWorkbook(inputPath.toFile())) {
+            List<Mark> allMarks = new ArrayList<>();
+
+            for (int s = 0; s < wb.getNumberOfSheets(); s++) {
+                Sheet sheet = wb.getSheetAt(s);
+                String sheetName = sheet.getSheetName();
+
+                long subjectId;
+                try {
+                    subjectId = Long.parseLong(sheetName.split("_")[0].substring(1));
+                } catch (Exception e) {
+                    errors.add("Sheet '" + sheetName + "': could not parse subject ID from sheet name");
+                    continue;
+                }
+
+                int maxScore;
+                try (Connection conn = db.getConnection();
+                     PreparedStatement ps = conn.prepareStatement(
+                         "SELECT COALESCE(out_of, 100) FROM exam_subjects WHERE exam_id = ? AND subject_id = ?")) {
+                    ps.setLong(1, examId);
+                    ps.setLong(2, subjectId);
+                    ResultSet rs = ps.executeQuery();
+                    maxScore = rs.next() ? rs.getInt(1) : 100;
+                } catch (SQLException e) {
+                    errors.add("Sheet '" + sheetName + "': could not load max score for subject " + subjectId);
+                    continue;
+                }
+
+                for (int r = 4; r <= sheet.getLastRowNum(); r++) {
+                    Row row = sheet.getRow(r);
+                    if (row == null) continue;
+                    String adm = getCellString(row.getCell(0));
+                    if (adm == null || adm.isBlank()) continue;
+                    totalRows++;
+
+                    Long studentId;
+                    try {
+                        studentId = resolveStudent(adm, admissionToStudentId, row);
+                    } catch (Exception e) {
+                        errors.add("Sheet '" + sheetName + "', Row " + (r + 1) + " (" + adm + "): " + e.getMessage());
+                        continue;
+                    }
+                    if (studentId == null) continue;
+
+                    Cell scoreCell = row.getCell(2);
+                    if (scoreCell == null) continue;
+                    String scoreStr = getCellString(scoreCell);
+                    if (scoreStr == null || scoreStr.isBlank()) continue;
+                    try {
+                        double score = Double.parseDouble(scoreStr.trim());
+                        if (!Double.isFinite(score) || score < 0) {
+                            errors.add("Sheet '" + sheetName + "', Row " + (r + 1) + ": invalid score '" + scoreStr + "'");
+                            continue;
+                        }
+                        if (score > maxScore) {
+                            errors.add("Sheet '" + sheetName + "', Row " + (r + 1) + ": score " + score + " exceeds maximum " + maxScore);
+                            continue;
+                        }
+                        String gradeResult = analysisService.determineGradeAndPoints(score, subjectId, examId);
+                        String[] parts = gradeResult.split("\\|");
+                        Mark mark = new Mark(examId, studentId, subjectId, score);
+                        mark.setGradeAchieved(parts[0]);
+                        mark.setPointsAchieved(Integer.parseInt(parts[1]));
+                        allMarks.add(mark);
+                        marksInserted++;
+                    } catch (NumberFormatException e) {
+                        errors.add("Sheet '" + sheetName + "', Row " + (r + 1) + ": invalid score '" + scoreStr + "'");
+                    }
+                }
+            }
+
+            marksRepo.batchInsert(allMarks);
+            return new ImportResult(totalRows, marksInserted, errors.size(), errors);
+        } catch (IOException | org.apache.poi.openxml4j.exceptions.InvalidFormatException e) {
+            throw new RuntimeException("Failed to read uploaded multi-sheet Excel file", e);
+        }
+    }
+
+    private record TeacherAssignment(long subjectId, String subjectCode, String subjectName, int form, String stream) {}
 
     private List<SubjectInfo> getSubjectsForExamAndStream(long examId, int form, String stream) {
         List<SubjectInfo> list = new ArrayList<>();

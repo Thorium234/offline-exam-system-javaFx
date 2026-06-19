@@ -97,7 +97,21 @@ public class BulkMarksForm {
         spinner = new ProgressIndicator();
         spinner.setVisible(false);
         spinner.setPrefSize(24, 24);
+
+        Button generateAllBtn = new Button("Generate All Templates");
+        generateAllBtn.setStyle("-fx-background-color: #e65100; -fx-text-fill: white; -fx-font-weight: bold;");
+        generateAllBtn.setVisible(false);
+
+        Button uploadAllBtn = new Button("Upload All Sheets");
+        uploadAllBtn.setStyle("-fx-background-color: #00695c; -fx-text-fill: white; -fx-font-weight: bold;");
+        uploadAllBtn.setVisible(false);
+
         btnRow.getChildren().addAll(genBtn, uploadBtn, spinner);
+        if (isTeacher) {
+            btnRow.getChildren().addAll(generateAllBtn, uploadAllBtn);
+            generateAllBtn.setVisible(true);
+            uploadAllBtn.setVisible(true);
+        }
         section2.getChildren().add(btnRow);
 
         statusLabel = new Label();
@@ -190,6 +204,81 @@ public class BulkMarksForm {
                 ExcelService.ImportResult result = task.getValue();
                 statusLabel.setText("Import complete: " + result.marksInserted() + " marks inserted.");
                 log("=== Import Results ===");
+                log("File: " + file.getName());
+                log("Rows processed: " + result.totalRows());
+                log("Marks inserted: " + result.marksInserted());
+                log("Errors: " + result.errors());
+                for (String err : result.errorMessages()) {
+                    log("  ERROR: " + err);
+                }
+                log("---");
+            });
+            task.setOnFailed(ev -> {
+                spinner.setVisible(false);
+                statusLabel.setText("Import failed.");
+                log("ERROR: " + task.getException().getMessage());
+            });
+            new Thread(task).start();
+        });
+
+        generateAllBtn.setOnAction(e -> {
+            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+            long examId = parseExamId();
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Save All Templates as One Excel File");
+            fc.setInitialFileName("all_subjects_templates.xlsx");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
+            File file = fc.showSaveDialog(stage);
+            if (file == null) return;
+
+            spinner.setVisible(true);
+            statusLabel.setText("Generating all templates...");
+
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() {
+                    excelService.generateTeacherMultiSheetTemplate(file.toPath(), examId, loggedInUserId);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                spinner.setVisible(false);
+                statusLabel.setText("All templates saved to: " + file.getAbsolutePath());
+                log("=== Multi-Sheet Template Generated ===");
+                log("File: " + file.getAbsolutePath());
+                log("All teacher subject/stream combos included.");
+                log("---");
+            });
+            task.setOnFailed(ev -> {
+                spinner.setVisible(false);
+                statusLabel.setText("Generation failed.");
+                log("ERROR: " + task.getException().getMessage());
+            });
+            new Thread(task).start();
+        });
+
+        uploadAllBtn.setOnAction(e -> {
+            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+            long examId = parseExamId();
+            FileChooser fc = new FileChooser();
+            fc.setTitle("Upload Multi-Sheet Excel File");
+            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
+            File file = fc.showOpenDialog(stage);
+            if (file == null) return;
+            if (file.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
+
+            spinner.setVisible(true);
+            statusLabel.setText("Processing multi-sheet upload...");
+
+            Task<ExcelService.ImportResult> task = new Task<>() {
+                @Override protected ExcelService.ImportResult call() {
+                    return excelService.processTeacherMultiSheetUpload(file.toPath(), examId);
+                }
+            };
+            task.setOnSucceeded(ev -> {
+                spinner.setVisible(false);
+                ExcelService.ImportResult result = task.getValue();
+                statusLabel.setText("Import complete: " + result.marksInserted() + " marks inserted.");
+                log("=== Multi-Sheet Import Results ===");
                 log("File: " + file.getName());
                 log("Rows processed: " + result.totalRows());
                 log("Marks inserted: " + result.marksInserted());

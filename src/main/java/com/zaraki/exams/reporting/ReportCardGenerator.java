@@ -178,21 +178,16 @@ public class ReportCardGenerator {
             leftCell.setBorder(PdfPCell.NO_BORDER);
             outerTable.addCell(leftCell);
 
-            Blob photoBlob = rs.getBlob("photo");
-            if (photoBlob != null) {
-                byte[] photoBytes = photoBlob.getBytes(1, (int) photoBlob.length());
-                if (photoBytes != null && photoBytes.length > 0) {
-                    try {
-                        com.lowagie.text.Image photo = com.lowagie.text.Image.getInstance(photoBytes);
-                        photo.scaleToFit(80, 100);
-                        PdfPCell photoCell = new PdfPCell(photo);
-                        photoCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-                        photoCell.setBorder(PdfPCell.NO_BORDER);
-                        outerTable.addCell(photoCell);
-                    } catch (Exception e) {
-                        outerTable.addCell(new PdfPCell(new Phrase("", f)));
-                    }
-                } else {
+            byte[] photoBytes = rs.getBytes("photo");
+            if (photoBytes != null && photoBytes.length > 0) {
+                try {
+                    com.lowagie.text.Image photo = com.lowagie.text.Image.getInstance(photoBytes);
+                    photo.scaleToFit(80, 100);
+                    PdfPCell photoCell = new PdfPCell(photo);
+                    photoCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                    photoCell.setBorder(PdfPCell.NO_BORDER);
+                    outerTable.addCell(photoCell);
+                } catch (Exception e) {
                     outerTable.addCell(new PdfPCell(new Phrase("", f)));
                 }
             } else {
