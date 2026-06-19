@@ -184,9 +184,15 @@ public class ExcelService {
                 cell.setCellStyle(boldStyle(wb));
             }
             for (int i = 0; i < subjects.size(); i++) {
-                Cell cell = headerRow.createCell(cols.length + i);
-                cell.setCellValue(subjects.get(i).name());
-                cell.setCellStyle(boldStyle(wb));
+                Cell scoreCell = headerRow.createCell(cols.length + i * 3);
+                scoreCell.setCellValue(subjects.get(i).name());
+                scoreCell.setCellStyle(boldStyle(wb));
+                Cell statusCell = headerRow.createCell(cols.length + i * 3 + 1);
+                statusCell.setCellValue(subjects.get(i).name() + " Status");
+                statusCell.setCellStyle(boldStyle(wb));
+                Cell cmtCell = headerRow.createCell(cols.length + i * 3 + 2);
+                cmtCell.setCellValue(subjects.get(i).name() + " Cmt");
+                cmtCell.setCellStyle(boldStyle(wb));
             }
 
             for (int r = 0; r < students.size(); r++) {
@@ -197,7 +203,7 @@ public class ExcelService {
 
             sheet.autoSizeColumn(0);
             sheet.autoSizeColumn(1);
-            for (int i = 0; i < subjects.size(); i++) {
+            for (int i = 0; i < subjects.size() * 3; i++) {
                 sheet.autoSizeColumn(cols.length + i);
             }
 
@@ -286,6 +292,18 @@ public class ExcelService {
                         Mark mark = new Mark(examId, studentId, subjectId, score);
                         mark.setGradeAchieved(parts[0]);
                         mark.setPointsAchieved(Integer.parseInt(parts[1]));
+
+                        String statusVal = getCellString(row.getCell(col + 1));
+                        if (statusVal != null && !statusVal.isBlank()) {
+                            String s = statusVal.toUpperCase().trim();
+                            if (s.equals("A") || s.equals("D")) mark.setStatus(s);
+                            else mark.setStatus("P");
+                        }
+                        String cmtVal = getCellString(row.getCell(col + 2));
+                        if (cmtVal != null && !cmtVal.isBlank()) {
+                            mark.setTeacherComment(cmtVal.trim());
+                        }
+
                         marksBatch.add(mark);
                         marksInserted++;
                     } catch (NumberFormatException e) {

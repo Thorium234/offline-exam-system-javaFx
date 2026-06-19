@@ -11,6 +11,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
 
+
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.file.Files;
@@ -88,6 +90,48 @@ public class SchoolSettingsForm {
         Button stampClearBtn = new Button("Clear");
         stampRow.getChildren().addAll(stampPreview, stampPathField, stampBrowseBtn, stampClearBtn);
 
+        // ── Best-of-N ──
+        Label bestOfNLabel = new Label("Best-of-N Grading");
+        bestOfNLabel.setFont(Font.font("System", FontWeight.BOLD, 13));
+        HBox bestOfNRow = new HBox(10);
+        int curBestOfN = 0;
+        try { curBestOfN = Integer.parseInt(settings.getSetting("best_of_n", "0")); } catch (NumberFormatException ignored) {}
+        Spinner<Integer> bestOfNSpinner = new Spinner<>(0, 7, curBestOfN);
+        bestOfNSpinner.setPrefWidth(80);
+        bestOfNSpinner.setEditable(true);
+        Label bestOfNHelp = new Label("0 = disabled. Picks best N subject scores for total points.");
+        bestOfNHelp.setFont(Font.font("System", 11));
+        bestOfNHelp.setTextFill(Color.gray(0.5));
+        bestOfNRow.getChildren().addAll(bestOfNSpinner, bestOfNHelp);
+
+        // ── Performance Band Remarks ──
+        Label remarkLabel = new Label("Performance Band Auto-Remarks");
+        remarkLabel.setFont(Font.font("System", FontWeight.BOLD, 13));
+        VBox remarkRows = new VBox(8);
+
+        HBox highRow = new HBox(10);
+        Label highLbl = new Label("High (\u226570%):");
+        highLbl.setPrefWidth(100);
+        TextField highField = new TextField(settings.getSetting("remark_high", "Excellent performance. Keep it up!"));
+        highField.setPrefWidth(500);
+        highRow.getChildren().addAll(highLbl, highField);
+
+        HBox avgRow = new HBox(10);
+        Label avgLbl = new Label("Average (50-69%):");
+        avgLbl.setPrefWidth(100);
+        TextField avgField = new TextField(settings.getSetting("remark_average", "Good performance. Room for improvement."));
+        avgField.setPrefWidth(500);
+        avgRow.getChildren().addAll(avgLbl, avgField);
+
+        HBox lowRow = new HBox(10);
+        Label lowLbl = new Label("Low (<50%):");
+        lowLbl.setPrefWidth(100);
+        TextField lowField = new TextField(settings.getSetting("remark_low", "Needs more effort and focus."));
+        lowField.setPrefWidth(500);
+        lowRow.getChildren().addAll(lowLbl, lowField);
+
+        remarkRows.getChildren().addAll(highRow, avgRow, lowRow);
+
         // ── Save ──
         Button saveBtn = new Button("Save Settings");
         saveBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;");
@@ -146,6 +190,10 @@ public class SchoolSettingsForm {
             settings.setClosingDate(closeField.getText().trim());
             settings.setLogoPath(logoPathField.getText().trim());
             settings.setStampPath(stampPathField.getText().trim());
+            settings.setSetting("best_of_n", String.valueOf(bestOfNSpinner.getValue()));
+            settings.setSetting("remark_high", highField.getText().trim());
+            settings.setSetting("remark_average", avgField.getText().trim());
+            settings.setSetting("remark_low", lowField.getText().trim());
             statusLabel.setText("Settings saved.");
             statusLabel.setTextFill(Color.GREEN);
         });
@@ -157,7 +205,9 @@ public class SchoolSettingsForm {
             nameLabel, nameField,
             datesLabel, datesRow,
             logoLabel, logoRow,
-            stampLabel, stampRow
+            stampLabel, stampRow,
+            bestOfNLabel, bestOfNRow,
+            remarkLabel, remarkRows
         );
 
         view.getChildren().addAll(header, info, fields, saveBtn, statusLabel);

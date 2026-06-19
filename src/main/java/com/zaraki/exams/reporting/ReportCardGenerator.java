@@ -8,18 +8,29 @@ import com.zaraki.exams.database.DatabaseEngine;
 import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
 
 import java.awt.*;
+import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.WriterException;
+import com.google.zxing.client.j2se.MatrixToImageWriter;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
 
 public class ReportCardGenerator {
 
@@ -80,6 +91,7 @@ public class ReportCardGenerator {
             addPerformanceIndicator(doc, examId, studentId);
         addTrendChart(doc, writer, studentId);
         addStamp(doc, writer);
+        addFooterSecurity(doc, writer, examId, studentId);
 
         doc.close();
     } catch (Exception e) {
@@ -139,7 +151,7 @@ public class ReportCardGenerator {
     }
 
     private void addStudentInfo(Document doc, long examId, long studentId) throws DocumentException {
-        String sql = "SELECT s.admission_number, s.full_name, s.form, s.stream FROM students s WHERE s.id = ?";
+        String sql = "SELECT s.admission_number, s.full_name, s.form, s.stream, s.photo FROM students s WHERE s.id = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, studentId);
@@ -147,32 +159,62 @@ public class ReportCardGenerator {
             if (!rs.next()) throw new RuntimeException("Student not found");
 
             Font f = FontFactory.getFont(FontFactory.HELVETICA, 11);
-            PdfPTable infoTable = new PdfPTable(4);
-            infoTable.setWidthPercentage(100);
-            infoTable.setSpacingBefore(6);
-            infoTable.setSpacingAfter(6);
 
+            PdfPTable outerTable = new PdfPTable(2);
+            outerTable.setWidthPercentage(100);
+            outerTable.setSpacingBefore(6);
+            outerTable.setSpacingAfter(6);
+            float[] outerWidths = {3f, 1f};
+            try { outerTable.setWidths(outerWidths); } catch (Exception ignored) {}
+
+            PdfPTable infoTable = new PdfPTable(2);
+            infoTable.setWidthPercentage(100);
             infoTable.addCell(new Phrase("Admission: " + rs.getString("admission_number"), f));
             infoTable.addCell(new Phrase("Name: " + rs.getString("full_name"), f));
             infoTable.addCell(new Phrase("Form: " + rs.getString("form"), f));
             infoTable.addCell(new Phrase("Stream: " + rs.getString("stream"), f));
 
-            doc.add(infoTable);
+            PdfPCell leftCell = new PdfPCell(infoTable);
+            leftCell.setBorder(PdfPCell.NO_BORDER);
+            outerTable.addCell(leftCell);
+
+            Blob photoBlob = rs.getBlob("photo");
+            if (photoBlob != null) {
+                byte[] photoBytes = photoBlob.getBytes(1, (int) photoBlob.length());
+                if (photoBytes != null && photoBytes.length > 0) {
+                    try {
+                        com.lowagie.text.Image photo = com.lowagie.text.Image.getInstance(photoBytes);
+                        photo.scaleToFit(80, 100);
+                        PdfPCell photoCell = new PdfPCell(photo);
+                        photoCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+                        photoCell.setBorder(PdfPCell.NO_BORDER);
+                        outerTable.addCell(photoCell);
+                    } catch (Exception e) {
+                        outerTable.addCell(new PdfPCell(new Phrase("", f)));
+                    }
+                } else {
+                    outerTable.addCell(new PdfPCell(new Phrase("", f)));
+                }
+            } else {
+                outerTable.addCell(new PdfPCell(new Phrase("", f)));
+            }
+
+            doc.add(outerTable);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
     private void addSubjectTable(Document doc, long examId, long studentId) throws DocumentException {
-        PdfPTable table = new PdfPTable(6);
+        PdfPTable table = new PdfPTable(8);
         table.setWidthPercentage(100);
         table.setSpacingBefore(8);
         table.setSpacingAfter(8);
-        float[] widths = {4f, 2f, 1.5f, 1.5f, 1.5f, 3f};
+        float[] widths = {3f, 1.5f, 1.2f, 1.2f, 1.2f, 1.2f, 1.2f, 2.5f};
         try { table.setWidths(widths); } catch (Exception ignored) {}
 
         Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Color.WHITE);
-        String[] headers = {"Subject", "Score", "Grade", "Points", "Pos", "Remarks"};
+        String[] headers = {"Subject", "Score", "Grade", "Points", "Pos", "Dev", "Cmt", "Remarks"};
         for (String h : headers) {
             PdfPCell cell = new PdfPCell(new Phrase(h, headerFont));
             cell.setBackgroundColor(new Color(26, 35, 126));
@@ -187,7 +229,10 @@ public class ReportCardGenerator {
                       AND m2.score > m.score) AS position,
                    (SELECT COUNT(DISTINCT m2.student_id) FROM marks m2
                     WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id) AS total_students,
-                   COALESCE(gs.remarks, '') AS remarks
+                   COALESCE(gs.remarks, '') AS remarks,
+                   COALESCE(m.deviation, 0.0) AS deviation,
+                   COALESCE(m.teacher_comment, '') AS teacher_comment,
+                   COALESCE(m.teacher_name, '') AS teacher_name
             FROM marks m
             JOIN subjects sub ON sub.id = m.subject_id
             LEFT JOIN grading_scales gs ON (gs.subject_id IS NULL OR gs.subject_id = m.subject_id)
@@ -213,11 +258,22 @@ public class ReportCardGenerator {
                 int pos = rs.getInt("position");
                 int total = rs.getInt("total_students");
                 table.addCell(new Phrase(rs.wasNull() ? "-" : pos + "/" + total, rowFont));
+                double dev = rs.getDouble("deviation");
+                table.addCell(new Phrase(dev != 0 ? String.format("%+.1f", dev) : "0", rowFont));
+                String teacherName = rs.getString("teacher_name");
+                String comment = rs.getString("teacher_comment");
+                StringBuilder cmtBuilder = new StringBuilder();
+                if (teacherName != null && !teacherName.isBlank()) cmtBuilder.append(teacherName);
+                if (comment != null && !comment.isBlank()) {
+                    if (!cmtBuilder.isEmpty()) cmtBuilder.append(": ");
+                    cmtBuilder.append(comment);
+                }
+                table.addCell(new Phrase(cmtBuilder.toString(), rowFont));
                 table.addCell(new Phrase(rs.getString("remarks") != null ? rs.getString("remarks") : "", rowFont));
             }
 
             if (!hasData) {
-                for (int i = 0; i < 6; i++) {
+                for (int i = 0; i < 8; i++) {
                     table.addCell(new Phrase("No marks recorded", rowFont));
                 }
             }
@@ -227,12 +283,28 @@ public class ReportCardGenerator {
         }
     }
 
+    private String meanPointsToGrade(double meanPoints) {
+        if (meanPoints >= 12) return "A";
+        if (meanPoints >= 11) return "A-";
+        if (meanPoints >= 10) return "B+";
+        if (meanPoints >= 9) return "B";
+        if (meanPoints >= 8) return "B-";
+        if (meanPoints >= 7) return "C+";
+        if (meanPoints >= 6) return "C";
+        if (meanPoints >= 5) return "C-";
+        if (meanPoints >= 4) return "D+";
+        if (meanPoints >= 3) return "D";
+        if (meanPoints >= 2) return "D-";
+        return "E";
+    }
+
     private void addSummary(Document doc, long examId, long studentId) throws DocumentException {
         String sql = """
             SELECT
                 ROUND(SUM(m.score), 1) AS total_marks,
                 COALESCE(SUM(m.points_achieved), 0) AS total_points,
-                ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points
+                ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points,
+                COUNT(m.subject_id) AS subject_count
             FROM marks m
             WHERE m.exam_id = ? AND m.student_id = ?
             """;
@@ -243,15 +315,39 @@ public class ReportCardGenerator {
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) {
-                Font f = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.DARK_GRAY);
-                Paragraph p = new Paragraph("SUMMARY", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, new Color(26, 35, 126)));
-                p.setSpacingBefore(8);
-                doc.add(p);
+                doc.add(new Paragraph("SUMMARY", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, new Color(26, 35, 126))));
 
-                String line = "Total Marks: " + rs.getDouble("total_marks")
-                    + "  |  Total Points: " + rs.getInt("total_points")
-                    + "  |  Mean Points: " + rs.getDouble("mean_points");
+                double totalMarks = rs.getDouble("total_marks");
+                int totalPoints = rs.getInt("total_points");
+                double meanPoints = rs.getDouble("mean_points");
+                int subjectCount = rs.getInt("subject_count");
+                String meanGrade = meanPointsToGrade(meanPoints);
+
+                Font f = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11, Color.DARK_GRAY);
+                String line = "Total Marks: " + totalMarks
+                    + "  |  Total Points: " + totalPoints
+                    + "  |  Mean Points: " + meanPoints
+                    + "  |  Mean Grade: " + meanGrade;
                 doc.add(new Paragraph(line, f));
+
+                // Auto-remark based on performance band
+                double maxPossible = subjectCount * 12.0;
+                if (maxPossible > 0) {
+                    double pct = (totalPoints / maxPossible) * 100;
+                    SettingsManager sm = new SettingsManager();
+                    String remark;
+                    if (pct >= 70) {
+                        remark = sm.getSetting("remark_high", "Excellent performance. Keep it up!");
+                    } else if (pct >= 50) {
+                        remark = sm.getSetting("remark_average", "Good performance. Room for improvement.");
+                    } else {
+                        remark = sm.getSetting("remark_low", "Needs more effort and focus.");
+                    }
+                    Font remarkFont = FontFactory.getFont(FontFactory.HELVETICA, 11, Font.ITALIC, new Color(100, 100, 100));
+                    Paragraph rp = new Paragraph("Performance Band (" + String.format("%.0f", pct) + "%): " + remark, remarkFont);
+                    rp.setSpacingBefore(4);
+                    doc.add(rp);
+                }
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -466,6 +562,7 @@ public class ReportCardGenerator {
                 addPerformanceIndicator(doc, examId, studentId);
                 addTrendChart(doc, writer, studentId);
                 addStamp(doc, writer);
+                addFooterSecurity(doc, writer, examId, studentId);
             }
 
             doc.close();
@@ -635,6 +732,47 @@ public class ReportCardGenerator {
             doc.close();
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate merit list", e);
+        }
+    }
+
+    private String computeSecurityHash(long examId, long studentId) {
+        try {
+            String raw = studentId + "|" + examId + "|" + LocalDateTime.now().toString();
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(raw.getBytes());
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, 16).toUpperCase();
+        } catch (NoSuchAlgorithmException e) {
+            return "ERROR";
+        }
+    }
+
+    private void addFooterSecurity(Document doc, PdfWriter writer, long examId, long studentId) {
+        try {
+            String hashHex = computeSecurityHash(examId, studentId);
+            String qrContent = "THORIUM-REPORT:" + hashHex + "|S" + studentId + "|E" + examId;
+
+            QRCodeWriter qrWriter = new QRCodeWriter();
+            BitMatrix bitMatrix = qrWriter.encode(qrContent, BarcodeFormat.QR_CODE, 120, 120);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            MatrixToImageWriter.writeToStream(bitMatrix, "PNG", baos);
+            com.lowagie.text.Image qrImage = com.lowagie.text.Image.getInstance(baos.toByteArray());
+            qrImage.setAbsolutePosition(
+                PageSize.A4.getWidth() - qrImage.getScaledWidth() - 36,
+                36
+            );
+            writer.getDirectContent().addImage(qrImage);
+
+            Font stampFont = FontFactory.getFont(FontFactory.HELVETICA, 7, Color.GRAY);
+            ColumnText.showTextAligned(writer.getDirectContent(),
+                Element.ALIGN_LEFT,
+                new Phrase("Sec: " + hashHex, stampFont),
+                36, 32, 0);
+        } catch (WriterException | IOException | DocumentException e) {
+            // ignore QR errors silently
         }
     }
 

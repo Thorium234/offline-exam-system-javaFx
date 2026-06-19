@@ -96,6 +96,27 @@ public class DatabaseEngine {
                 CREATE INDEX IF NOT EXISTS idx_students_form_stream ON students(form, stream);
             """);
             try { stmt.execute("ALTER TABLE students ADD COLUMN deallocated INTEGER NOT NULL DEFAULT 0"); } catch (SQLException ignored) {}
+            try { stmt.execute("ALTER TABLE students ADD COLUMN photo BLOB"); } catch (SQLException ignored) {}
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS student_subjects (
+                    student_id INTEGER NOT NULL,
+                    subject_id INTEGER NOT NULL,
+                    PRIMARY KEY (student_id, subject_id),
+                    FOREIGN KEY (student_id) REFERENCES students(id),
+                    FOREIGN KEY (subject_id) REFERENCES subjects(id)
+                );
+            """);
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS stream_subjects (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    form       INTEGER NOT NULL,
+                    stream     TEXT    NOT NULL,
+                    subject_id INTEGER NOT NULL,
+                    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+                    UNIQUE(form, stream, subject_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_stream_subjects_form_stream ON stream_subjects(form, stream);
+            """);
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS subjects (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,6 +224,10 @@ public class DatabaseEngine {
                 CREATE INDEX IF NOT EXISTS idx_marks_student ON marks(student_id);
                 CREATE INDEX IF NOT EXISTS idx_marks_exam_student ON marks(exam_id, student_id);
             """);
+            try { stmt.execute("ALTER TABLE marks ADD COLUMN status TEXT NOT NULL DEFAULT 'P'"); } catch (SQLException ignored) {}
+            try { stmt.execute("ALTER TABLE marks ADD COLUMN teacher_comment TEXT"); } catch (SQLException ignored) {}
+            try { stmt.execute("ALTER TABLE marks ADD COLUMN teacher_name TEXT"); } catch (SQLException ignored) {}
+            try { stmt.execute("ALTER TABLE marks ADD COLUMN deviation REAL"); } catch (SQLException ignored) {}
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS teacher_subjects (

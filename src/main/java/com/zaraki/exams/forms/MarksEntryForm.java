@@ -140,9 +140,41 @@ public class MarksEntryForm {
 
         TableColumn<StudentMarkRow, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
-        colStatus.setPrefWidth(90);
+        colStatus.setPrefWidth(80);
+        colStatus.setCellFactory(col -> new TableCell<>() {
+            private final ComboBox<String> combo = new ComboBox<>(
+                FXCollections.observableArrayList("P", "A", "D"));
+            { combo.setOnAction(e -> {
+                StudentMarkRow row = getTableRow().getItem();
+                if (row != null) { row.status = combo.getValue(); row.dirty = true; }
+            }); }
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    combo.setValue(getTableRow().getItem().status != null ? getTableRow().getItem().status : "P");
+                    setGraphic(combo);
+                }
+            }
+        });
 
-        studentTable.getColumns().addAll(colPos, colAdm, colName, colScore, colGrade, colPoints, colStatus);
+        TableColumn<StudentMarkRow, String> colCmt = new TableColumn<>("Comment");
+        colCmt.setCellValueFactory(new PropertyValueFactory<>("teacherComment"));
+        colCmt.setCellFactory(TextFieldTableCell.forTableColumn());
+        colCmt.setOnEditCommit(e -> {
+            StudentMarkRow row = e.getRowValue();
+            row.teacherComment = e.getNewValue();
+            row.dirty = true;
+        });
+        colCmt.setPrefWidth(150);
+
+        TableColumn<StudentMarkRow, String> colDev = new TableColumn<>("Deviation");
+        colDev.setCellValueFactory(new PropertyValueFactory<>("deviation"));
+        colDev.setPrefWidth(80);
+
+        studentTable.getColumns().addAll(colPos, colAdm, colName, colScore, colGrade, colPoints,
+            colStatus, colCmt, colDev);
 
         HBox saveRow = new HBox(10);
         saveAllBtn = new Button("Save All Marks");
@@ -254,8 +286,20 @@ public class MarksEntryForm {
         String stream = streamBox.getValue();
 
         ObservableList<StudentMarkRow> rows = FXCollections.observableArrayList();
+        double classAvg = 0;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT AVG(score) FROM marks WHERE exam_id = ? AND subject_id = ?")) {
+            ps.setLong(1, selectedExamId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) classAvg = rs.getDouble(1);
+        } catch (SQLException e) { /* ignore */ }
+
         String sql = """
-            SELECT s.id, s.admission_number, s.full_name, m.score, m.grade_achieved, m.points_achieved
+            SELECT s.id, s.admission_number, s.full_name,
+                   m.score, m.grade_achieved, m.points_achieved,
+                   m.status, m.teacher_comment, m.deviation
             FROM students s
             LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? AND m.subject_id = ?
             WHERE s.form = ? AND s.stream = ? AND s.deallocated = 0
@@ -269,17 +313,30 @@ public class MarksEntryForm {
             ps.setString(4, stream);
             ResultSet rs = ps.executeQuery();
             int pos = 0;
+            double finalClassAvg = classAvg;
             while (rs.next()) {
                 pos++;
+                Double scoreVal = rs.getObject("score") != null ? rs.getDouble("score") : null;
+                String savedStatus = rs.getString("status");
+                String status = savedStatus != null ? savedStatus
+                    : (scoreVal != null ? "P" : "");
+                String comment = rs.getString("teacher_comment");
+                Double deviation = null;
+                if (scoreVal != null) {
+                    deviation = rs.getObject("deviation") != null ? rs.getDouble("deviation")
+                        : (finalClassAvg > 0 ? scoreVal - finalClassAvg : null);
+                }
                 rows.add(new StudentMarkRow(
                     pos,
                     rs.getLong("id"),
                     rs.getString("admission_number"),
                     rs.getString("full_name"),
-                    rs.getObject("score") != null ? rs.getDouble("score") : null,
+                    scoreVal,
                     rs.getString("grade_achieved"),
                     rs.getObject("points_achieved") != null ? rs.getInt("points_achieved") : null,
-                    rs.getObject("score") != null ? "Saved" : ""
+                    status,
+                    comment != null ? comment : "",
+                    deviation != null ? String.format("%+.1f", deviation) : ""
                 ));
             }
         } catch (SQLException e) { showAlert(e.getMessage()); }
@@ -297,17 +354,34 @@ public class MarksEntryForm {
 
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (?,?,?,?,?,?)")) {
+                 "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status, teacher_comment, deviation) VALUES (?,?,?,?,?,?,?,?,?)")) {
             conn.setAutoCommit(false);
             try {
                 for (StudentMarkRow row : studentTable.getItems()) {
-                    if (row.score == null || !row.dirty) continue;
+                    if (!row.dirty) continue;
+                    String status = (row.status != null && !row.status.isEmpty()) ? row.status : "P";
+                    double deviation = 0;
+                    if (row.score != null) {
+                        double avg = getClassAverage(examId, subjectId);
+                        deviation = Math.round((row.score - avg) * 10.0) / 10.0;
+                    }
                     ps.setLong(1, examId);
                     ps.setLong(2, row.studentId);
                     ps.setLong(3, subjectId);
-                    ps.setDouble(4, row.score);
+                    if (row.score != null) {
+                        ps.setDouble(4, row.score);
+                    } else {
+                        ps.setNull(4, java.sql.Types.REAL);
+                    }
                     ps.setString(5, row.grade);
-                    ps.setInt(6, row.points);
+                    if (row.points != null) {
+                        ps.setInt(6, row.points);
+                    } else {
+                        ps.setNull(6, java.sql.Types.INTEGER);
+                    }
+                    ps.setString(7, status);
+                    ps.setString(8, row.teacherComment);
+                    ps.setDouble(9, deviation);
                     ps.addBatch();
                     saved++;
                 }
@@ -356,17 +430,25 @@ public class MarksEntryForm {
 
     private Map<String, Object[]> getSubjectsWithMarksCount() {
         Map<String, Object[]> map = new LinkedHashMap<>();
+        int form = formBox.getValue();
+        String stream = streamBox.getValue();
         String sql = """
             SELECT sub.id, sub.subject_code, sub.subject_name, sub.department,
-                       COALESCE((SELECT es.out_of FROM exam_subjects es WHERE es.exam_id = ? AND es.subject_id = sub.id), 100) AS out_of,
-                    (SELECT COUNT(*) FROM marks m WHERE m.exam_id = ? AND m.subject_id = sub.id) AS mark_count
+                   COALESCE((SELECT es.out_of FROM exam_subjects es WHERE es.exam_id = ? AND es.subject_id = sub.id), 100) AS out_of,
+                   (SELECT COUNT(*) FROM marks m WHERE m.exam_id = ? AND m.subject_id = sub.id) AS mark_count
             FROM subjects sub
+            WHERE sub.id IN (SELECT ss.subject_id FROM stream_subjects ss WHERE ss.form = ? AND ss.stream = ?)
+               OR NOT EXISTS (SELECT 1 FROM stream_subjects WHERE form = ? AND stream = ?)
             ORDER BY sub.subject_name
             """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, selectedExamId);
             ps.setLong(2, selectedExamId);
+            ps.setInt(3, form);
+            ps.setString(4, stream);
+            ps.setInt(5, form);
+            ps.setString(6, stream);
             ResultSet rs = ps.executeQuery();
             while (rs.next())
                 map.put(rs.getString("subject_name"), new Object[]{
@@ -388,6 +470,17 @@ public class MarksEntryForm {
             if (rs.next()) return rs.getString("subject_name");
         } catch (SQLException e) { showAlert(e.getMessage()); }
         return "Subject";
+    }
+
+    private double getClassAverage(long examId, long subjectId) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT AVG(score) FROM marks WHERE exam_id = ? AND subject_id = ? AND score IS NOT NULL")) {
+            ps.setLong(1, examId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getDouble(1) : 0;
+        } catch (SQLException e) { return 0; }
     }
 
     private int countStudents(int form, String stream) {
@@ -412,10 +505,13 @@ public class MarksEntryForm {
         private String grade;
         private Integer points;
         private String status;
+        private String teacherComment;
+        private String deviation;
         private boolean dirty;
 
         public StudentMarkRow(int pos, long studentId, String admission, String name,
-                              Double score, String grade, Integer points, String status) {
+                              Double score, String grade, Integer points,
+                              String status, String teacherComment, String deviation) {
             this.pos = pos;
             this.studentId = studentId;
             this.admission = admission;
@@ -424,6 +520,8 @@ public class MarksEntryForm {
             this.grade = grade;
             this.points = points;
             this.status = status;
+            this.teacherComment = teacherComment;
+            this.deviation = deviation;
             this.dirty = false;
         }
 
@@ -435,5 +533,7 @@ public class MarksEntryForm {
         public String getGrade() { return grade; }
         public Integer getPoints() { return points; }
         public String getStatus() { return status; }
+        public String getTeacherComment() { return teacherComment; }
+        public String getDeviation() { return deviation; }
     }
 }

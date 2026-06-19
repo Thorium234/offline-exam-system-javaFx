@@ -54,6 +54,7 @@ public class DashboardForm {
     private ReportForm reportForm;
     private StudentBrowserForm studentBrowserForm;
     private RecycleBinForm recycleBinForm;
+    private SubjectAssignmentForm subjectAssignmentForm;
 
     public DashboardForm(Stage stage, String loggedInUser, String loggedInUsername, String loggedInRole, long loggedInUserId, Runnable onLogout) {
         this.stage = stage;
@@ -115,9 +116,9 @@ public class DashboardForm {
             navItems = List.of("Dashboard", "Marks Entry", "Bulk Marks");
         } else {
             navItems = List.of("Dashboard", "Students", "Subjects", "Exams",
-                "Grading Scales", "Users", "Teacher Subjects", "Settings",
-                "Publish", "Marks Entry", "Bulk Marks", "Analysis", "Reports",
-                "Browse Students", "Recycle Bin");
+                "Grading Scales", "Users", "Teacher Subjects", "Stream Subjects",
+                "Settings", "Publish", "Marks Entry", "Bulk Marks", "Analysis",
+                "Reports", "Browse Students", "Recycle Bin");
         }
 
         for (String itemName : navItems) {
@@ -182,6 +183,7 @@ public class DashboardForm {
             case "grading_scales" -> showGradingScales();
             case "users" -> showUsers();
             case "teacher_subjects" -> showTeacherSubjects();
+            case "stream_subjects" -> showStreamSubjects();
             case "settings" -> showSettings();
             case "publish" -> showPublish();
             case "marks_entry" -> showMarksEntry();
@@ -537,6 +539,11 @@ public class DashboardForm {
     private void showTeacherSubjects() {
         teacherAssignmentForm = new TeacherAssignmentForm(db);
         setContent(teacherAssignmentForm.getView());
+    }
+
+    private void showStreamSubjects() {
+        subjectAssignmentForm = new SubjectAssignmentForm(db);
+        setContent(subjectAssignmentForm.getView());
     }
 
     private void showSettings() {

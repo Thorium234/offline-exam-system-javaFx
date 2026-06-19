@@ -574,6 +574,67 @@ public class ExamAnalysisService {
         }
     }
 
+    public List<MeritSubject> getSubjectsForExam(long examId) {
+        List<MeritSubject> list = new ArrayList<>();
+        String sql = "SELECT DISTINCT sub.id, sub.subject_code, sub.subject_name FROM marks m "
+            + "JOIN subjects sub ON sub.id = m.subject_id WHERE m.exam_id = ? AND (m.status IS NULL OR m.status = 'P') ORDER BY sub.subject_name";
+        try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next())
+                list.add(new MeritSubject(rs.getLong("id"), rs.getString("subject_code"), rs.getString("subject_name")));
+        } catch (SQLException e) { /* ignore */ }
+        return list;
+    }
+
+    public int computeBestOfNPoints(long studentId, long examId, int n) {
+        String sql = "SELECT points_achieved FROM marks WHERE student_id = ? AND exam_id = ? "
+            + "AND (status IS NULL OR status = 'P') AND points_achieved IS NOT NULL "
+            + "ORDER BY points_achieved DESC LIMIT ?";
+        try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, studentId);
+            ps.setLong(2, examId);
+            ps.setInt(3, n);
+            ResultSet rs = ps.executeQuery();
+            int total = 0;
+            while (rs.next()) total += rs.getInt(1);
+            return total;
+        } catch (SQLException e) { return 0; }
+    }
+
+    public String computeMeanGradeFromPoints(double meanPoints) {
+        if (meanPoints >= 12) return "A";
+        if (meanPoints >= 11) return "A-";
+        if (meanPoints >= 10) return "B+";
+        if (meanPoints >= 9) return "B";
+        if (meanPoints >= 8) return "B-";
+        if (meanPoints >= 7) return "C+";
+        if (meanPoints >= 6) return "C";
+        if (meanPoints >= 5) return "C-";
+        if (meanPoints >= 4) return "D+";
+        if (meanPoints >= 3) return "D";
+        if (meanPoints >= 2) return "D-";
+        return "E";
+    }
+
+    public double computeDeviation(long studentId, long examId, long subjectId) {
+        double studentScore = 0;
+        double classAvg = 0;
+        String scoreSql = "SELECT score FROM marks WHERE exam_id = ? AND student_id = ? AND subject_id = ?";
+        String avgSql = "SELECT AVG(score) FROM marks WHERE exam_id = ? AND subject_id = ?";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps1 = conn.prepareStatement(scoreSql);
+             PreparedStatement ps2 = conn.prepareStatement(avgSql)) {
+            ps1.setLong(1, examId); ps1.setLong(2, studentId); ps1.setLong(3, subjectId);
+            ResultSet rs = ps1.executeQuery();
+            if (rs.next()) studentScore = rs.getDouble("score");
+            ps2.setLong(1, examId); ps2.setLong(2, subjectId);
+            rs = ps2.executeQuery();
+            if (rs.next()) classAvg = rs.getDouble(1);
+        } catch (SQLException e) { /* ignore */ }
+        return classAvg > 0 ? Math.round((studentScore - classAvg) * 10.0) / 10.0 : 0;
+    }
+
     public double normalizeByOutOf(double score, Long subjectId, Long examId) {
         if (examId == null || subjectId == null) return score;
         String sql = "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?";

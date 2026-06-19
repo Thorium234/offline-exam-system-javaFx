@@ -13,8 +13,8 @@ import java.util.Optional;
 public class MarksRepository {
 
     private static final String INSERT_SQL = """
-        INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status, teacher_comment, teacher_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """;
 
     private final DatabaseEngine db;
@@ -42,6 +42,9 @@ public class MarksRepository {
                     ps.setDouble(4, mark.getScore());
                     ps.setString(5, mark.getGradeAchieved());
                     ps.setObject(6, mark.getPointsAchieved() > 0 ? mark.getPointsAchieved() : null);
+                    ps.setString(7, mark.getStatus() != null ? mark.getStatus() : "P");
+                    ps.setString(8, mark.getTeacherComment());
+                    ps.setString(9, mark.getTeacherName());
                     ps.addBatch();
                     count++;
 

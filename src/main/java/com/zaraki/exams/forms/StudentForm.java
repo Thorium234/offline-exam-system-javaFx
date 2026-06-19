@@ -17,9 +17,12 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
-import java.io.File;
+import java.io.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class StudentForm {
 
@@ -80,7 +83,42 @@ public class StudentForm {
         colForm.setCellValueFactory(new PropertyValueFactory<>("form")); colForm.setPrefWidth(70);
         TableColumn<StudentRow, String> colStream = new TableColumn<>("Stream");
         colStream.setCellValueFactory(new PropertyValueFactory<>("stream")); colStream.setPrefWidth(120);
-        table.getColumns().addAll(colId, colAdm, colName, colForm, colStream);
+
+        TableColumn<StudentRow, Void> colPhoto = new TableColumn<>("Photo");
+        colPhoto.setPrefWidth(80);
+        colPhoto.setCellFactory(col -> new TableCell<>() {
+            private final Button btn = new Button("Upload");
+            { btn.setStyle("-fx-font-size: 10;"); }
+            @Override protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    StudentRow row = getTableRow().getItem();
+                    btn.setOnAction(e -> uploadPhoto(row));
+                    setGraphic(btn);
+                }
+            }
+        });
+
+        TableColumn<StudentRow, Void> colSubj = new TableColumn<>("Subjects");
+        colSubj.setPrefWidth(90);
+        colSubj.setCellFactory(col -> new TableCell<>() {
+            private final Button btn = new Button("Manage");
+            { btn.setStyle("-fx-font-size: 10;"); }
+            @Override protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    StudentRow row = getTableRow().getItem();
+                    btn.setOnAction(e -> manageSubjects(row));
+                    setGraphic(btn);
+                }
+            }
+        });
+
+        table.getColumns().addAll(colId, colAdm, colName, colForm, colStream, colPhoto, colSubj);
         table.setPrefHeight(400);
 
         data = FXCollections.observableArrayList();
@@ -212,9 +250,121 @@ public class StudentForm {
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }
 
+    private void uploadPhoto(StudentRow row) {
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Select Photo for " + row.name);
+        fc.getExtensionFilters().addAll(
+            new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
+        File file = fc.showOpenDialog(stage);
+        if (file == null) return;
+        if (file.length() > 2_097_152) { showAlert("Photo too large. Max 2 MB."); return; }
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                byte[] bytes = Files.readAllBytes(file.toPath());
+                try (Connection conn = db.getConnection();
+                     PreparedStatement ps = conn.prepareStatement("UPDATE students SET photo = ? WHERE id = ?")) {
+                    ps.setBytes(1, bytes);
+                    ps.setLong(2, row.id);
+                    ps.executeUpdate();
+                }
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> statusLabel.setText("Photo saved for " + row.name));
+        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+        new Thread(task).start();
+    }
+
+    private void manageSubjects(StudentRow row) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Subjects for " + row.name);
+        dialog.setHeaderText("Select subjects for " + row.name + " (Adm: " + row.admission + ")");
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        VBox content = new VBox(5);
+        content.setPadding(new Insets(10));
+
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(20, 20);
+        content.getChildren().add(spinner);
+
+        dialog.getDialogPane().setContent(content);
+
+        Map<Long, CheckBox> subjBoxes = new LinkedHashMap<>();
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() {
+                Set<Long> enrolled = new HashSet<>();
+                try (Connection conn = db.getConnection();
+                     PreparedStatement ps = conn.prepareStatement(
+                         "SELECT subject_id FROM student_subjects WHERE student_id = ?")) {
+                    ps.setLong(1, row.id);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) enrolled.add(rs.getLong("subject_id"));
+                    }
+                } catch (SQLException e) { throw new RuntimeException(e); }
+
+                ObservableList<SubjectInfo> subjects = FXCollections.observableArrayList();
+                try (Connection conn = db.getConnection();
+                     Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery("SELECT id, subject_code, subject_name FROM subjects ORDER BY subject_name")) {
+                    while (rs.next())
+                        subjects.add(new SubjectInfo(rs.getLong("id"), rs.getString("subject_code"), rs.getString("subject_name")));
+                } catch (SQLException e) { throw new RuntimeException(e); }
+
+                javafx.application.Platform.runLater(() -> {
+                    content.getChildren().clear();
+                    for (SubjectInfo si : subjects) {
+                        CheckBox cb = new CheckBox(si.code + " - " + si.name);
+                        cb.setSelected(enrolled.contains(si.id));
+                        subjBoxes.put(si.id, cb);
+                        content.getChildren().add(cb);
+                    }
+                    Button saveBtn = new Button("Save");
+                    saveBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white;");
+                    saveBtn.setOnAction(e -> saveSubjects(row.id, subjBoxes, dialog));
+                    content.getChildren().add(saveBtn);
+                });
+                return null;
+            }
+        };
+        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+        new Thread(task).start();
+        dialog.showAndWait();
+    }
+
+    private void saveSubjects(long studentId, Map<Long, CheckBox> boxes, Dialog<?> dialog) {
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() {
+                try (Connection conn = db.getConnection();
+                     PreparedStatement del = conn.prepareStatement("DELETE FROM student_subjects WHERE student_id = ?");
+                     PreparedStatement ins = conn.prepareStatement(
+                         "INSERT OR IGNORE INTO student_subjects (student_id, subject_id) VALUES (?,?)")) {
+                    del.setLong(1, studentId);
+                    del.executeUpdate();
+                    for (var entry : boxes.entrySet()) {
+                        if (entry.getValue().isSelected()) {
+                            ins.setLong(1, studentId);
+                            ins.setLong(2, entry.getKey());
+                            ins.executeUpdate();
+                        }
+                    }
+                } catch (SQLException e) { throw new RuntimeException(e); }
+                return null;
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            statusLabel.setText("Subjects saved for student");
+            dialog.close();
+        });
+        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+        new Thread(task).start();
+    }
+
     private void showAlert(String msg) {
         Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
     }
+
+    private record SubjectInfo(long id, String code, String name) {}
 
     public static class StudentRow {
         private final Long id; private final String admission, name; private final Integer form; private final String stream;

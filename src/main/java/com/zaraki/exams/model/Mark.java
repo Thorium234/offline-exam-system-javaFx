@@ -9,6 +9,9 @@ public class Mark {
     private double score;
     private String gradeAchieved;
     private int pointsAchieved;
+    private String status;
+    private String teacherComment;
+    private String teacherName;
 
     public Mark() {}
 
@@ -36,6 +39,15 @@ public class Mark {
 
     public int getPointsAchieved() { return pointsAchieved; }
     public void setPointsAchieved(int pointsAchieved) { this.pointsAchieved = pointsAchieved; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+
+    public String getTeacherComment() { return teacherComment; }
+    public void setTeacherComment(String teacherComment) { this.teacherComment = teacherComment; }
+
+    public String getTeacherName() { return teacherName; }
+    public void setTeacherName(String teacherName) { this.teacherName = teacherName; }
 
     @Override
     public boolean equals(Object o) {

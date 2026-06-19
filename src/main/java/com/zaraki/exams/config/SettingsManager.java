@@ -22,6 +22,10 @@ public class SettingsManager {
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('opening_date', '')");
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('logo_path', '')");
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('stamp_path', '')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('best_of_n', '0')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('remark_high', 'Excellent performance. Keep it up!')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('remark_average', 'Good performance. Room for improvement.')");
+            st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('remark_low', 'Needs more effort and focus.')");
         } catch (SQLException e) {
             throw new RuntimeException("Failed to init settings", e);
         }
@@ -55,6 +59,14 @@ public class SettingsManager {
 
     public String getStampPath() { return get("stamp_path", ""); }
     public void setStampPath(String v) { set("stamp_path", v); }
+
+    public String getSetting(String key, String def) {
+        return get(key, def);
+    }
+
+    public void setSetting(String key, String value) {
+        set(key, value);
+    }
 
     private String get(String key, String def) {
         try (PreparedStatement ps = db.getConnection().prepareStatement("SELECT value FROM app_settings WHERE key = ?")) {
