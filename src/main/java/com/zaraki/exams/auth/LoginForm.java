@@ -1,6 +1,7 @@
 package com.zaraki.exams.auth;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.LoggerUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -92,27 +93,40 @@ public class LoginForm {
             return;
         }
 
+        LoggerUtil.info("Login attempt for user: '" + username + "'");
         String sql = "SELECT id, password_hash, salt, full_name, role FROM users WHERE username = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, username);
+            LoggerUtil.fine("Executing: " + sql.replace("?", "'" + username + "'"));
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 String hash = rs.getString("password_hash");
                 String salt = rs.getString("salt");
+                LoggerUtil.fine("Found user: hash_len=" + (hash != null ? hash.length() : 0)
+                    + " salt_len=" + (salt != null ? salt.length() : 0)
+                    + " role=" + rs.getString("role"));
+                LoggerUtil.fine("Full user row: id=" + rs.getLong("id")
+                    + " full_name='" + rs.getString("full_name") + "'");
                 if (PasswordUtils.verify(password, salt, hash)) {
                     loggedInUserId = rs.getLong("id");
                     loggedInUser = rs.getString("full_name");
                     loggedInUsername = username;
                     loggedInRole = rs.getString("role");
+                    LoggerUtil.info("Login SUCCESS for user: '" + username + "' role=" + loggedInRole);
                     if (onLoginSuccess != null) onLoginSuccess.run();
                 } else {
+                    LoggerUtil.warn("Login FAILED: invalid password for user: '" + username + "'");
+                    LoggerUtil.warn("Stored hash: " + hash);
+                    LoggerUtil.warn("Stored salt: " + salt);
                     errorLabel.setText("Invalid password.");
                 }
             } else {
+                LoggerUtil.warn("Login FAILED: user not found: '" + username + "'");
                 errorLabel.setText("User not found.");
             }
         } catch (SQLException e) {
+            LoggerUtil.severe("Login database error: " + e.getMessage());
             errorLabel.setText("Database error: " + e.getMessage());
         }
     }

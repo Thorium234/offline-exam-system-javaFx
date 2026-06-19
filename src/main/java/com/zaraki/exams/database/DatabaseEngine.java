@@ -1,6 +1,7 @@
 package com.zaraki.exams.database;
 
 import com.zaraki.exams.auth.PasswordUtils;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -192,6 +193,7 @@ public class DatabaseEngine {
             try (var rs = stmt.executeQuery("SELECT COUNT(*) FROM users WHERE username='admin'")) {
                 adminExists = rs.next() && rs.getInt(1) > 0;
             }
+            LoggerUtil.info("Admin user exists in DB: " + adminExists);
 
             if (!adminExists) {
                 String salt = PasswordUtils.generateSalt();
@@ -203,7 +205,8 @@ public class DatabaseEngine {
                     ups.setString(3, salt);
                     ups.setString(4, "Administrator");
                     ups.setString(5, "admin");
-                    ups.executeUpdate();
+                    int rows = ups.executeUpdate();
+                    LoggerUtil.info("Admin user seeded (rows affected: " + rows + ")");
                 }
             }
 

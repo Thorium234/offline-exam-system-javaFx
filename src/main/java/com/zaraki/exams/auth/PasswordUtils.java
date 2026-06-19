@@ -1,5 +1,7 @@
 package com.zaraki.exams.auth;
 
+import com.zaraki.exams.util.LoggerUtil;
+
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import java.security.NoSuchAlgorithmException;
@@ -31,6 +33,12 @@ public class PasswordUtils {
     }
 
     public static boolean verify(String password, String salt, String storedHash) {
-        return hashPassword(password, salt).equals(storedHash);
+        boolean result = hashPassword(password, salt).equals(storedHash);
+        if (!result) {
+            LoggerUtil.warn("Password verification FAILED for user");
+        } else {
+            LoggerUtil.fine("Password verification SUCCESS");
+        }
+        return result;
     }
 }
