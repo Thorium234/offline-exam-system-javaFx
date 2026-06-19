@@ -41,8 +41,10 @@ public class ExamForm {
         TableColumn<ExamRow, String> cTerm = new TableColumn<>("Term");
         cTerm.setCellValueFactory(new PropertyValueFactory<>("term")); cTerm.setPrefWidth(120);
         TableColumn<ExamRow, String> cSeries = new TableColumn<>("Series");
-        cSeries.setCellValueFactory(new PropertyValueFactory<>("series")); cSeries.setPrefWidth(200);
-        table.getColumns().addAll(cId, cYear, cTerm, cSeries);
+        cSeries.setCellValueFactory(new PropertyValueFactory<>("series")); cSeries.setPrefWidth(180);
+        TableColumn<ExamRow, Integer> cMaxMarks = new TableColumn<>("Max Marks");
+        cMaxMarks.setCellValueFactory(new PropertyValueFactory<>("maxMarks")); cMaxMarks.setPrefWidth(90);
+        table.getColumns().addAll(cId, cYear, cTerm, cSeries, cMaxMarks);
         table.setPrefHeight(400);
 
         ObservableList<ExamRow> data = FXCollections.observableArrayList();
@@ -79,12 +81,17 @@ public class ExamForm {
 
     private void load(ObservableList<ExamRow> data) {
         data.clear();
+        String sql = """
+            SELECT e.id, e.academic_year, e.term, e.exam_series,
+                   COALESCE((SELECT SUM(COALESCE(es.out_of, 100)) FROM exam_subjects es WHERE es.exam_id = e.id), 0) AS max_marks
+            FROM exams e ORDER BY e.id
+            """;
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams")) {
+             ResultSet rs = st.executeQuery(sql)) {
             while (rs.next())
                 data.add(new ExamRow(rs.getLong("id"), rs.getString("academic_year"),
-                    rs.getString("term"), rs.getString("exam_series")));
+                    rs.getString("term"), rs.getString("exam_series"), rs.getInt("max_marks")));
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }
 
@@ -95,12 +102,15 @@ public class ExamForm {
 
     public static class ExamRow {
         private final Long id; private final String year, term, series;
-        public ExamRow(Long id, String year, String term, String series) {
+        private final Integer maxMarks;
+        public ExamRow(Long id, String year, String term, String series, Integer maxMarks) {
             this.id = id; this.year = year; this.term = term; this.series = series;
+            this.maxMarks = maxMarks;
         }
         public Long getId() { return id; }
         public String getYear() { return year; }
         public String getTerm() { return term; }
         public String getSeries() { return series; }
+        public Integer getMaxMarks() { return maxMarks; }
     }
 }

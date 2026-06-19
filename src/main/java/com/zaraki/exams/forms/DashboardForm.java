@@ -322,7 +322,10 @@ public class DashboardForm {
         ComboBox<String> examBox = new ComboBox<>();
         examBox.setPromptText("Select Exam");
         examBox.setPrefWidth(300);
-        controls.getChildren().addAll(new Label("Exam:"), examBox);
+        Label maxMarksLabel = new Label();
+        maxMarksLabel.setFont(Font.font("System", FontWeight.BOLD, 13));
+        maxMarksLabel.setTextFill(Color.web(PRIMARY));
+        controls.getChildren().addAll(new Label("Exam:"), examBox, maxMarksLabel);
         loadExamList(examBox);
 
         ProgressIndicator spinner = new ProgressIndicator();
@@ -377,6 +380,7 @@ public class DashboardForm {
         examBox.setOnAction(e -> {
             if (examBox.getValue() == null) return;
             long selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            maxMarksLabel.setText("Max Marks: " + getExamMaxMarks(selectedExamId));
             spinner.setVisible(true);
             Task<Void> task = new Task<>() {
                 @Override protected Void call() {
@@ -599,6 +603,16 @@ public class DashboardForm {
 
     private void setContent(javafx.scene.Node node) {
         contentArea.getChildren().setAll(node);
+    }
+
+    private int getExamMaxMarks(long examId) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COALESCE(SUM(COALESCE(out_of, 100)), 0) FROM exam_subjects WHERE exam_id = ?")) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) { return 0; }
     }
 
     private int count(String table) {

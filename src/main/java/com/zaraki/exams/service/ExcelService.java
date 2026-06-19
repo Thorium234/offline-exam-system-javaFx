@@ -166,7 +166,7 @@ public class ExcelService {
     public void generateTemplate(Path outputPath, long examId, int form, String stream) {
         String examInfo = getExamInfo(examId);
         List<String[]> students = getStudents(form, stream);
-        List<SubjectInfo> subjects = getSubjects();
+        List<SubjectInfo> subjects = getSubjectsForExamAndStream(examId, form, stream);
 
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet("Form " + form + " - " + stream);
@@ -184,15 +184,9 @@ public class ExcelService {
                 cell.setCellStyle(boldStyle(wb));
             }
             for (int i = 0; i < subjects.size(); i++) {
-                Cell scoreCell = headerRow.createCell(cols.length + i * 3);
+                Cell scoreCell = headerRow.createCell(cols.length + i);
                 scoreCell.setCellValue(subjects.get(i).name());
                 scoreCell.setCellStyle(boldStyle(wb));
-                Cell statusCell = headerRow.createCell(cols.length + i * 3 + 1);
-                statusCell.setCellValue(subjects.get(i).name() + " Status");
-                statusCell.setCellStyle(boldStyle(wb));
-                Cell cmtCell = headerRow.createCell(cols.length + i * 3 + 2);
-                cmtCell.setCellValue(subjects.get(i).name() + " Cmt");
-                cmtCell.setCellStyle(boldStyle(wb));
             }
 
             for (int r = 0; r < students.size(); r++) {
@@ -203,7 +197,7 @@ public class ExcelService {
 
             sheet.autoSizeColumn(0);
             sheet.autoSizeColumn(1);
-            for (int i = 0; i < subjects.size() * 3; i++) {
+            for (int i = 0; i < subjects.size(); i++) {
                 sheet.autoSizeColumn(cols.length + i);
             }
 
@@ -213,6 +207,47 @@ public class ExcelService {
         } catch (IOException e) {
             throw new RuntimeException("Failed to generate Excel template", e);
         }
+    }
+
+    private List<SubjectInfo> getSubjectsForExamAndStream(long examId, int form, String stream) {
+        List<SubjectInfo> list = new ArrayList<>();
+        String sql = """
+            SELECT DISTINCT sub.id, sub.subject_name
+            FROM subjects sub
+            WHERE sub.id IN (
+                SELECT subject_id FROM exam_subjects WHERE exam_id = ?
+                INTERSECT
+                SELECT subject_id FROM stream_subjects WHERE form = ? AND stream = ?
+            )
+            ORDER BY sub.subject_name
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ps.setInt(2, form);
+            ps.setString(3, stream);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(new SubjectInfo(rs.getLong("id"), rs.getString("subject_name")));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch subjects", e);
+        }
+        // Fallback: if no subjects match, return all subjects in the exam
+        if (list.isEmpty()) {
+            try (Connection conn = db.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                     "SELECT DISTINCT sub.id, sub.subject_name FROM subjects sub JOIN exam_subjects es ON es.subject_id = sub.id WHERE es.exam_id = ? ORDER BY sub.subject_name")) {
+                ps.setLong(1, examId);
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    list.add(new SubjectInfo(rs.getLong("id"), rs.getString("subject_name")));
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException("Failed to fetch subjects", e);
+            }
+        }
+        return list;
     }
 
     public ImportResult processUpload(Path inputPath, long examId) {
@@ -292,18 +327,6 @@ public class ExcelService {
                         Mark mark = new Mark(examId, studentId, subjectId, score);
                         mark.setGradeAchieved(parts[0]);
                         mark.setPointsAchieved(Integer.parseInt(parts[1]));
-
-                        String statusVal = getCellString(row.getCell(col + 1));
-                        if (statusVal != null && !statusVal.isBlank()) {
-                            String s = statusVal.toUpperCase().trim();
-                            if (s.equals("A") || s.equals("D")) mark.setStatus(s);
-                            else mark.setStatus("P");
-                        }
-                        String cmtVal = getCellString(row.getCell(col + 2));
-                        if (cmtVal != null && !cmtVal.isBlank()) {
-                            mark.setTeacherComment(cmtVal.trim());
-                        }
-
                         marksBatch.add(mark);
                         marksInserted++;
                     } catch (NumberFormatException e) {
