@@ -32,8 +32,10 @@ public class PublishForm {
 
     private final DatabaseEngine db;
     private final ExamAnalysisService analysisService;
+    private final String displayName;
     private final String username;
     private final String role;
+    private long currentUserId;
 
     private final ComboBox<String> examBox = new ComboBox<>();
     private final VBox subjectTableArea = new VBox(10);
@@ -51,11 +53,22 @@ public class PublishForm {
     private final Label uploadStatus = new Label();
     private int currentOutOf = 100;
 
-    public PublishForm(DatabaseEngine db, String username, String role) {
+    public PublishForm(DatabaseEngine db, String displayName, String username, String role) {
         this.db = db;
         this.analysisService = new ExamAnalysisService();
+        this.displayName = displayName;
         this.username = username;
         this.role = role;
+        this.currentUserId = resolveUserId();
+    }
+
+    private long resolveUserId() {
+        try (PreparedStatement ps = db.getConnection().prepareStatement("SELECT id FROM users WHERE username = ?")) {
+            ps.setString(1, username);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) return rs.getLong("id");
+        } catch (SQLException ignored) {}
+        return 0;
     }
 
     public VBox getView() {
@@ -171,13 +184,26 @@ public class PublishForm {
         subjectTable.getColumns().addAll(colNum, colSubj, colOutOf, colMarks, colPub, colAction);
         subjectTable.setEditable(true);
 
-        // Release button area
+        // Action buttons
+        HBox actionRow = new HBox(10);
         Button releaseBtn = new Button("Release Exam (Admin Only)");
         releaseBtn.setStyle("-fx-background-color: #e65100; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14;");
         releaseBtn.setPrefWidth(300);
         releaseBtn.setOnAction(e -> releaseExam());
+        actionRow.getChildren().add(releaseBtn);
 
-        VBox tableWrapper = new VBox(10, subjectTable, releaseBtn);
+        if (role.equals("admin")) {
+            Button multiUploadBtn = new Button("Upload Multi-Sheet Excel (Admin)");
+            multiUploadBtn.setStyle("-fx-background-color: #1565c0; -fx-text-fill: white; -fx-font-weight: bold;");
+            multiUploadBtn.setOnAction(e -> uploadMultiSheetExcel());
+            actionRow.getChildren().add(multiUploadBtn);
+
+            Button teacherTemplateBtn = new Button("Generate Teacher Template");
+            teacherTemplateBtn.setOnAction(e -> generateTeacherTemplate());
+            actionRow.getChildren().add(teacherTemplateBtn);
+        }
+
+        VBox tableWrapper = new VBox(10, subjectTable, actionRow);
         subjectTableArea.getChildren().add(tableWrapper);
     }
 
@@ -204,7 +230,7 @@ public class PublishForm {
             ps.executeUpdate();
         } catch (SQLException e) { showAlert(e.getMessage()); return; }
 
-        String sql = """
+        StringBuilder sql = new StringBuilder("""
             SELECT s.id, s.subject_name, s.subject_code,
                    COALESCE(es.out_of, 100) AS out_of,
                    COALESCE(es.published, 0) AS published,
@@ -212,12 +238,21 @@ public class PublishForm {
                    (SELECT COUNT(*) FROM marks m WHERE m.exam_id = ? AND m.subject_id = s.id) AS marks_count
             FROM subjects s
             LEFT JOIN exam_subjects es ON es.exam_id = ? AND es.subject_id = s.id
-            ORDER BY s.subject_name
-            """;
+            """);
+
+        // For teachers, filter to only their assigned subjects
+        if (!role.equals("admin") && currentUserId > 0) {
+            sql.append(" JOIN teacher_subjects ts ON ts.subject_id = s.id AND ts.user_id = ?");
+        }
+
+        sql.append(" ORDER BY s.subject_name");
+
         try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, currentExamId);
-            ps.setLong(2, currentExamId);
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            int idx = 1;
+            ps.setLong(idx++, currentExamId);
+            ps.setLong(idx++, currentExamId);
+            if (!role.equals("admin") && currentUserId > 0) ps.setLong(idx++, currentUserId);
             ResultSet rs = ps.executeQuery();
             int num = 0;
             while (rs.next()) {
@@ -552,6 +587,217 @@ public class PublishForm {
             ResultSet rs = ps.executeQuery();
             return rs.next() && rs.getInt("released") == 1;
         } catch (SQLException e) { return false; }
+    }
+
+    // ─── Multi-Sheet Excel Upload ──────────────────────────
+
+    private void uploadMultiSheetExcel() {
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Upload Multi-Sheet Marks Excel");
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel", "*.xlsx", "*.xls"));
+        File f = fc.showOpenDialog(null);
+        if (f == null) return;
+
+        long examId = currentExamId;
+        List<String> errors = new ArrayList<>();
+        int totalImported = 0;
+        int totalRows = 0;
+
+        try (Workbook wb = new XSSFWorkbook(new FileInputStream(f))) {
+            for (int s = 0; s < wb.getNumberOfSheets(); s++) {
+                Sheet sheet = wb.getSheetAt(s);
+                String sheetName = wb.getSheetName(s);
+                if (sheetName == null || sheetName.isBlank()) continue;
+
+                // Parse sheet name: "SubjectName - FormXStream" or just "SubjectName"
+                String subjectName;
+                Integer form = null;
+                String stream = null;
+
+                if (sheetName.contains("-")) {
+                    String[] parts = sheetName.split("-", 2);
+                    subjectName = parts[0].trim();
+                    String classPart = parts[1].trim().toUpperCase();
+                    // Parse "FORMXSTREAM" or "XSTREAM" or "X STREAM"
+                    classPart = classPart.replace("FORM ", "").replace("FORM", "").trim();
+                    StringBuilder formSb = new StringBuilder();
+                    int ci = 0;
+                    while (ci < classPart.length() && Character.isDigit(classPart.charAt(ci))) {
+                        formSb.append(classPart.charAt(ci));
+                        ci++;
+                    }
+                    if (formSb.length() > 0) {
+                        form = Integer.parseInt(formSb.toString());
+                        stream = classPart.substring(ci).trim();
+                    }
+                } else {
+                    subjectName = sheetName.trim();
+                }
+
+                if (subjectName.isEmpty()) { errors.add("Sheet '" + sheetName + "': could not parse subject name"); continue; }
+
+                // Resolve subject_id
+                long subjectId;
+                try (PreparedStatement ps = db.getConnection().prepareStatement("SELECT id FROM subjects WHERE subject_name = ?")) {
+                    ps.setString(1, subjectName);
+                    ResultSet rs = ps.executeQuery();
+                    if (!rs.next()) { errors.add("Sheet '" + sheetName + "': unknown subject '" + subjectName + "'"); continue; }
+                    subjectId = rs.getLong("id");
+                }
+
+                // Resolve students - if form/stream specified, only import matching students
+                Map<String, Long> studentMap = new HashMap<>();
+                String studentSql;
+                if (form != null && stream != null && !stream.isEmpty()) {
+                    studentSql = "SELECT id, admission_number FROM students WHERE form = ? AND stream = ?";
+                } else {
+                    studentSql = "SELECT id, admission_number FROM students";
+                }
+                try (PreparedStatement ps = db.getConnection().prepareStatement(studentSql)) {
+                    if (form != null && stream != null && !stream.isEmpty()) {
+                        ps.setInt(1, form);
+                        ps.setString(2, stream);
+                    }
+                    ResultSet rs = ps.executeQuery();
+                    while (rs.next()) studentMap.put(rs.getString("admission_number"), rs.getLong("id"));
+                }
+
+                // Ensure exam_subjects row
+                try (PreparedStatement ps = db.getConnection().prepareStatement(
+                        "INSERT OR IGNORE INTO exam_subjects (exam_id, subject_id, out_of) VALUES (?,?,100)")) {
+                    ps.setLong(1, examId);
+                    ps.setLong(2, subjectId);
+                    ps.executeUpdate();
+                }
+
+                try (PreparedStatement ps = db.getConnection().prepareStatement(
+                        "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (?,?,?,?,?,?)")) {
+
+                    for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                        Row row = sheet.getRow(r);
+                        if (row == null) continue;
+                        String adm = getCellString(row.getCell(0));
+                        if (adm == null || adm.isBlank()) continue;
+                        totalRows++;
+
+                        Long studentId = studentMap.get(adm.trim());
+                        if (studentId == null) {
+                            errors.add("Sheet '" + sheetName + "', row " + (r + 1) + ": student " + adm + " not found");
+                            continue;
+                        }
+
+                        String scoreStr = getCellString(row.getCell(1));
+                        if (scoreStr == null || scoreStr.isBlank()) continue;
+                        double score;
+                        try { score = Double.parseDouble(scoreStr.trim()); }
+                        catch (NumberFormatException e) { errors.add("Sheet '" + sheetName + "', row " + (r + 1) + ": invalid score"); continue; }
+
+                        String gradeResult = analysisService.determineGradeAndPoints(score, subjectId, examId);
+                        String[] parts = gradeResult.split("\\|");
+
+                        ps.setLong(1, examId);
+                        ps.setLong(2, studentId);
+                        ps.setLong(3, subjectId);
+                        ps.setDouble(4, score);
+                        ps.setString(5, parts[0]);
+                        ps.setInt(6, Integer.parseInt(parts[1]));
+                        ps.addBatch();
+                        totalImported++;
+                        if (totalImported % 200 == 0) ps.executeBatch();
+                    }
+                    ps.executeBatch();
+                }
+            }
+
+            String msg = "Imported " + totalImported + " marks from " + totalRows + " rows across " + wb.getNumberOfSheets() + " sheets";
+            if (!errors.isEmpty()) msg += " (" + errors.size() + " errors)";
+            showAlert(msg);
+            loadSubjectStatus();
+        } catch (Exception e) {
+            showAlert("Multi-sheet upload failed: " + e.getMessage());
+        }
+    }
+
+    // ─── Teacher Template Generation ────────────────────────
+
+    private void generateTeacherTemplate() {
+        // Choose a teacher
+        ComboBox<String> teacherSelector = new ComboBox<>();
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT id, username, full_name FROM users WHERE role = 'teacher' ORDER BY full_name")) {
+            while (rs.next())
+                teacherSelector.getItems().add(rs.getLong("id") + ":" + rs.getString("username") + " | " + rs.getString("full_name"));
+        } catch (SQLException e) { showAlert(e.getMessage()); return; }
+
+        if (teacherSelector.getItems().isEmpty()) { showAlert("No teachers found."); return; }
+        teacherSelector.setPrefWidth(300);
+
+        Dialog<String> dialog = new Dialog<>();
+        dialog.setTitle("Select Teacher");
+        dialog.getDialogPane().setContent(new VBox(10, new Label("Select teacher to generate template for:"), teacherSelector));
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialog.setResultConverter(btn -> btn == ButtonType.OK ? teacherSelector.getValue() : null);
+        String result = dialog.showAndWait().orElse(null);
+        if (result == null) return;
+
+        long teacherUserId = Long.parseLong(result.split(":")[0]);
+        String teacherLabel = result.split("\\|")[1].trim();
+
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Save Teacher Template");
+        fc.setInitialFileName("marks_template_" + teacherLabel.replace(" ", "_") + ".xlsx");
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel", "*.xlsx"));
+        File f = fc.showSaveDialog(null);
+        if (f == null) return;
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            String subjSql = """
+                SELECT s.id, s.subject_name, ts.form, ts.stream
+                FROM teacher_subjects ts
+                JOIN subjects s ON s.id = ts.subject_id
+                WHERE ts.user_id = ?
+                ORDER BY s.subject_name, ts.form, ts.stream
+                """;
+            try (PreparedStatement ps = db.getConnection().prepareStatement(subjSql)) {
+                ps.setLong(1, teacherUserId);
+                ResultSet rs = ps.executeQuery();
+                boolean hasSheets = false;
+                while (rs.next()) {
+                    hasSheets = true;
+                    String subjectName = rs.getString("subject_name");
+                    int form = rs.getInt("form");
+                    String stream = rs.getString("stream");
+                    String sheetLabel = subjectName + " - Form" + form + stream;
+
+                    Sheet sheet = wb.createSheet(sheetLabel);
+                    Row hdr = sheet.createRow(0);
+                    hdr.createCell(0).setCellValue("Admission No.");
+                    hdr.createCell(1).setCellValue("Score (Enter marks)");
+
+                    // Pre-populate students
+                    try (PreparedStatement sp = db.getConnection().prepareStatement(
+                            "SELECT admission_number, full_name FROM students WHERE form = ? AND stream = ? ORDER BY admission_number")) {
+                        sp.setInt(1, form);
+                        sp.setString(2, stream);
+                        ResultSet sr = sp.executeQuery();
+                        int r = 1;
+                        while (sr.next()) {
+                            Row row = sheet.createRow(r++);
+                            row.createCell(0).setCellValue(sr.getString("admission_number"));
+                        }
+                    }
+                    sheet.autoSizeColumn(0);
+                    sheet.autoSizeColumn(1);
+                }
+                if (!hasSheets) { showAlert("This teacher has no subject assignments."); return; }
+            }
+
+            try (FileOutputStream fos = new FileOutputStream(f)) { wb.write(fos); }
+            showAlert("Template saved for " + teacherLabel + " with " + wb.getNumberOfSheets() + " subject sheets.");
+        } catch (Exception e) {
+            showAlert("Failed to generate template: " + e.getMessage());
+        }
     }
 
     // ─── Utility ─────────────────────────────────────────────

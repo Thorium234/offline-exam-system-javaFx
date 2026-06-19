@@ -179,6 +179,20 @@ public class DatabaseEngine {
                 CREATE INDEX IF NOT EXISTS idx_marks_student ON marks(student_id);
                 CREATE INDEX IF NOT EXISTS idx_marks_exam_student ON marks(exam_id, student_id);
             """);
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS teacher_subjects (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id    INTEGER NOT NULL,
+                    subject_id INTEGER NOT NULL,
+                    form       INTEGER NOT NULL,
+                    stream     TEXT    NOT NULL,
+                    FOREIGN KEY (user_id)    REFERENCES users(id),
+                    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+                    UNIQUE(user_id, subject_id, form, stream)
+                );
+                CREATE INDEX IF NOT EXISTS idx_teacher_subjects_user ON teacher_subjects(user_id);
+            """);
         }
     }
 

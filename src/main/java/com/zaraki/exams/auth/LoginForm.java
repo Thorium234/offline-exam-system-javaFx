@@ -20,6 +20,7 @@ public class LoginForm {
     private final PasswordField passwordField = new PasswordField();
     private final Label errorLabel = new Label();
     private String loggedInUser = "";
+    private String loggedInUsername = "";
     private String loggedInRole = "";
 
     public LoginForm(DatabaseEngine db, Runnable onLoginSuccess) {
@@ -100,6 +101,7 @@ public class LoginForm {
                 String salt = rs.getString("salt");
                 if (PasswordUtils.verify(password, salt, hash)) {
                     loggedInUser = rs.getString("full_name");
+                    loggedInUsername = username;
                     loggedInRole = rs.getString("role");
                     if (onLoginSuccess != null) onLoginSuccess.run();
                 } else {
@@ -114,5 +116,6 @@ public class LoginForm {
     }
 
     public String getLoggedInUser() { return loggedInUser; }
+    public String getLoggedInUsername() { return loggedInUsername; }
     public String getLoggedInRole() { return loggedInRole; }
 }

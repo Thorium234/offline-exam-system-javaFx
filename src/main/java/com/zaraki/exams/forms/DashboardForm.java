@@ -22,6 +22,7 @@ import com.zaraki.exams.SeedData;
 import com.zaraki.exams.auth.UserManagementForm;
 import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.forms.SchoolSettingsForm;
+import com.zaraki.exams.forms.TeacherAssignmentForm;
 import java.sql.*;
 import java.util.List;
 
@@ -45,17 +46,18 @@ public class DashboardForm {
     private GradingScaleForm gradingScaleForm;
     private UserManagementForm userManagementForm;
     private SchoolSettingsForm schoolSettingsForm;
+    private TeacherAssignmentForm teacherAssignmentForm;
     private PublishForm publishForm;
     private MarksEntryForm marksEntryForm;
     private BulkMarksForm bulkMarksForm;
     private AnalysisForm analysisForm;
     private ReportForm reportForm;
 
-    public DashboardForm(Stage stage, String loggedInUser, String loggedInRole, Runnable onLogout) {
+    public DashboardForm(Stage stage, String loggedInUser, String loggedInUsername, String loggedInRole, Runnable onLogout) {
         this.stage = stage;
         this.loggedInUser = loggedInUser;
+        this.loggedInUsername = loggedInUsername;
         this.loggedInRole = loggedInRole;
-        this.loggedInUsername = loggedInUser;
         this.onLogout = onLogout;
         this.db = DatabaseEngine.getInstance();
         this.settings = new SettingsManager();
@@ -112,6 +114,7 @@ public class DashboardForm {
             {"Exams", ""},
             {"Grading Scales", ""},
             {"Users", ""},
+            {"Teacher Subjects", ""},
             {"Settings", ""},
             {"Publish", ""},
             {"Marks Entry", ""},
@@ -177,6 +180,7 @@ public class DashboardForm {
             case "exams" -> showExams();
             case "grading_scales" -> showGradingScales();
             case "users" -> showUsers();
+            case "teacher_subjects" -> showTeacherSubjects();
             case "settings" -> showSettings();
             case "publish" -> showPublish();
             case "marks_entry" -> showMarksEntry();
@@ -391,13 +395,18 @@ public class DashboardForm {
         setContent(userManagementForm.getView());
     }
 
+    private void showTeacherSubjects() {
+        teacherAssignmentForm = new TeacherAssignmentForm(db);
+        setContent(teacherAssignmentForm.getView());
+    }
+
     private void showSettings() {
         schoolSettingsForm = new SchoolSettingsForm();
         setContent(schoolSettingsForm.getView());
     }
 
     private void showPublish() {
-        publishForm = new PublishForm(db, loggedInUsername, loggedInRole);
+        publishForm = new PublishForm(db, loggedInUser, loggedInUsername, loggedInRole);
         setContent(publishForm.getView());
     }
 
