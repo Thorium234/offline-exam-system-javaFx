@@ -22,6 +22,7 @@ public class LoginForm {
     private String loggedInUser = "";
     private String loggedInUsername = "";
     private String loggedInRole = "";
+    private long loggedInUserId;
 
     public LoginForm(DatabaseEngine db, Runnable onLoginSuccess) {
         this.db = db;
@@ -91,7 +92,7 @@ public class LoginForm {
             return;
         }
 
-        String sql = "SELECT password_hash, salt, full_name, role FROM users WHERE username = ?";
+        String sql = "SELECT id, password_hash, salt, full_name, role FROM users WHERE username = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, username);
@@ -100,6 +101,7 @@ public class LoginForm {
                 String hash = rs.getString("password_hash");
                 String salt = rs.getString("salt");
                 if (PasswordUtils.verify(password, salt, hash)) {
+                    loggedInUserId = rs.getLong("id");
                     loggedInUser = rs.getString("full_name");
                     loggedInUsername = username;
                     loggedInRole = rs.getString("role");
@@ -118,4 +120,5 @@ public class LoginForm {
     public String getLoggedInUser() { return loggedInUser; }
     public String getLoggedInUsername() { return loggedInUsername; }
     public String getLoggedInRole() { return loggedInRole; }
+    public long getLoggedInUserId() { return loggedInUserId; }
 }

@@ -10,7 +10,6 @@ import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.chart.*;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -24,7 +23,7 @@ import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.forms.SchoolSettingsForm;
 import com.zaraki.exams.forms.TeacherAssignmentForm;
 import java.sql.*;
-import java.util.List;
+import java.util.*;
 
 public class DashboardForm {
 
@@ -38,6 +37,7 @@ public class DashboardForm {
     private final String loggedInUser;
     private final String loggedInUsername;
     private final String loggedInRole;
+    private final long loggedInUserId;
     private final Runnable onLogout;
 
     private StudentForm studentForm;
@@ -55,11 +55,12 @@ public class DashboardForm {
     private StudentBrowserForm studentBrowserForm;
     private RecycleBinForm recycleBinForm;
 
-    public DashboardForm(Stage stage, String loggedInUser, String loggedInUsername, String loggedInRole, Runnable onLogout) {
+    public DashboardForm(Stage stage, String loggedInUser, String loggedInUsername, String loggedInRole, long loggedInUserId, Runnable onLogout) {
         this.stage = stage;
         this.loggedInUser = loggedInUser;
         this.loggedInUsername = loggedInUsername;
         this.loggedInRole = loggedInRole;
+        this.loggedInUserId = loggedInUserId;
         this.onLogout = onLogout;
         this.db = DatabaseEngine.getInstance();
         this.settings = new SettingsManager();
@@ -109,32 +110,24 @@ public class DashboardForm {
 
         VBox nav = new VBox(2);
         nav.setPadding(new Insets(10, 0, 0, 0));
-        String[][] items = {
-            {"Dashboard", ""},
-            {"Students", ""},
-            {"Subjects", ""},
-            {"Exams", ""},
-            {"Grading Scales", ""},
-            {"Users", ""},
-            {"Teacher Subjects", ""},
-            {"Settings", ""},
-            {"Publish", ""},
-            {"Marks Entry", ""},
-            {"Bulk Marks", ""},
-            {"Analysis", ""},
-            {"Reports", ""},
-            {"Browse Students", ""},
-            {"Recycle Bin", ""}
-        };
+        List<String> navItems;
+        if ("teacher".equals(loggedInRole)) {
+            navItems = List.of("Dashboard", "Marks Entry", "Bulk Marks");
+        } else {
+            navItems = List.of("Dashboard", "Students", "Subjects", "Exams",
+                "Grading Scales", "Users", "Teacher Subjects", "Settings",
+                "Publish", "Marks Entry", "Bulk Marks", "Analysis", "Reports",
+                "Browse Students", "Recycle Bin");
+        }
 
-        for (String[] item : items) {
-            Label lbl = new Label("  " + item[0]);
+        for (String itemName : navItems) {
+            Label lbl = new Label("  " + itemName);
             lbl.setFont(Font.font("System", 14));
             lbl.setTextFill(Color.rgb(255, 255, 255, 0.75));
             lbl.setPadding(new Insets(10, 15, 10, 15));
             lbl.setPrefWidth(210);
             lbl.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
-            String page = item[0].toLowerCase().replace(" ", "_");
+            String page = itemName.toLowerCase().replace(" ", "_");
             lbl.setOnMouseEntered(e ->
                 lbl.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-background-radius: 6;"));
             lbl.setOnMouseExited(e ->
@@ -177,6 +170,10 @@ public class DashboardForm {
     }
 
     private void navigate(String page) {
+        if ("teacher".equals(loggedInRole) && "dashboard".equals(page)) {
+            showTeacherDashboard();
+            return;
+        }
         switch (page) {
             case "dashboard" -> showDashboard();
             case "students" -> showStudents();
@@ -247,7 +244,7 @@ public class DashboardForm {
         });
         new Thread(countTask).start();
 
-        VBox trendSection = buildTrendSection();
+        VBox trendSection = buildExamAnalytics();
 
         // Demo data section
         VBox demoBox = new VBox(8);
@@ -311,95 +308,189 @@ public class DashboardForm {
         contentArea.getChildren().setAll(view);
     }
 
-    private VBox buildTrendSection() {
-        VBox section = new VBox(10);
+    private VBox buildExamAnalytics() {
+        VBox section = new VBox(15);
         section.setPadding(new Insets(20, 0, 0, 0));
 
-        Label trendLabel = new Label("Performance Trend");
-        trendLabel.setFont(Font.font("System", FontWeight.BOLD, 18));
+        Label title = new Label("Exam Analytics");
+        title.setFont(Font.font("System", FontWeight.BOLD, 18));
 
         HBox controls = new HBox(10);
-        ComboBox<String> studentBox = new ComboBox<>();
-        studentBox.setPromptText("Select Student");
-        studentBox.setPrefWidth(300);
+        ComboBox<String> examBox = new ComboBox<>();
+        examBox.setPromptText("Select Exam");
+        examBox.setPrefWidth(300);
+        controls.getChildren().addAll(new Label("Exam:"), examBox);
+        loadExamList(examBox);
 
-        Label loadingLabel = new Label("Loading students...");
-        loadingLabel.setFont(Font.font("System", 12));
-        loadingLabel.setTextFill(Color.gray(0.5));
-        controls.getChildren().addAll(new Label("Student:"), studentBox, loadingLabel);
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(20, 20);
+        spinner.setVisible(false);
 
-        Task<Void> loadStudentsTask = new Task<>() {
-            @Override protected Void call() throws Exception {
-                try (Connection conn = db.getConnection();
-                     Statement st = conn.createStatement();
-                     ResultSet rs = st.executeQuery(
-                         "SELECT id, admission_number, full_name FROM students WHERE deallocated = 0 ORDER BY admission_number")) {
-                    ObservableList<String> items = FXCollections.observableArrayList();
-                    while (rs.next())
-                        items.add(rs.getLong("id") + " - " + rs.getString("admission_number")
-                            + " | " + rs.getString("full_name"));
+        // Top Subjects by Average
+        Label topLabel = new Label("Top Subjects by Average");
+        topLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
+
+        TableView<Object[]> topTable = new TableView<>();
+        topTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        TableColumn<Object[], String> rankCol = new TableColumn<>("#");
+        rankCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(String.valueOf(d.getValue()[0])));
+        rankCol.setPrefWidth(40);
+        TableColumn<Object[], String> subjCol = new TableColumn<>("Subject");
+        subjCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty((String) d.getValue()[1]));
+        TableColumn<Object[], String> avgCol = new TableColumn<>("Average");
+        avgCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(String.format("%.1f", d.getValue()[2])));
+        avgCol.setPrefWidth(80);
+        TableColumn<Object[], String> gradeCol = new TableColumn<>("Grade");
+        gradeCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty((String) d.getValue()[3]));
+        gradeCol.setPrefWidth(60);
+        topTable.getColumns().addAll(rankCol, subjCol, avgCol, gradeCol);
+        topTable.setPrefHeight(150);
+
+        // Most Improved Stream
+        Label improvedLabel = new Label("Most Improved Stream");
+        improvedLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
+        Label improvedValue = new Label();
+
+        // Per-Stream Subject Summary
+        Label summaryLabel = new Label("Per-Stream Subject Summary");
+        summaryLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
+
+        TableView<Object[]> summaryTable = new TableView<>();
+        summaryTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        TableColumn<Object[], String> fsCol = new TableColumn<>("Form/Stream");
+        fsCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty((String) d.getValue()[0]));
+        fsCol.setPrefWidth(100);
+        TableColumn<Object[], String> ssCol = new TableColumn<>("Subject");
+        ssCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty((String) d.getValue()[1]));
+        TableColumn<Object[], String> saCol = new TableColumn<>("Average");
+        saCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(String.format("%.1f", d.getValue()[2])));
+        saCol.setPrefWidth(80);
+        TableColumn<Object[], String> sgCol = new TableColumn<>("Grade");
+        sgCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty((String) d.getValue()[3]));
+        sgCol.setPrefWidth(60);
+        summaryTable.getColumns().addAll(fsCol, ssCol, saCol, sgCol);
+        summaryTable.setPrefHeight(200);
+
+        examBox.setOnAction(e -> {
+            if (examBox.getValue() == null) return;
+            long selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            spinner.setVisible(true);
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() {
+                    ObservableList<Object[]> topData = FXCollections.observableArrayList();
+                    ObservableList<Object[]> summaryData = FXCollections.observableArrayList();
+                    String[] improvement = {""};
+                    try (Connection conn = db.getConnection()) {
+                        // Top subjects
+                        try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT su.subject_name, AVG(m.score) as avg_score, su.id as subject_id "
+                            + "FROM marks m JOIN subjects su ON su.id = m.subject_id "
+                            + "WHERE m.exam_id = ? GROUP BY m.subject_id ORDER BY avg_score DESC")) {
+                            ps.setLong(1, selectedExamId);
+                            try (ResultSet rs = ps.executeQuery()) {
+                                int rank = 0;
+                                while (rs.next()) {
+                                    rank++;
+                                    String name = rs.getString("subject_name");
+                                    double avg = rs.getDouble("avg_score");
+                                    long subjId = rs.getLong("subject_id");
+                                    String grade = analysisService.determineGradeAndPoints(avg, subjId, selectedExamId).split("\\|")[0];
+                                    topData.add(new Object[]{rank, name, avg, grade});
+                                }
+                            }
+                        }
+
+                        // Most improved stream
+                        try (Statement st = conn.createStatement();
+                             ResultSet rs = st.executeQuery("SELECT id FROM exams ORDER BY id DESC LIMIT 2")) {
+                            long[] eids = new long[2];
+                            int idx = 0;
+                            while (rs.next() && idx < 2) eids[idx++] = rs.getLong("id");
+                            if (idx == 2) {
+                                Map<String, Double> avg1 = getStreamAverages(conn, eids[0]);
+                                Map<String, Double> avg2 = getStreamAverages(conn, eids[1]);
+                                String bestStream = "";
+                                double bestImprovement = -Double.MAX_VALUE;
+                                for (var entry : avg2.entrySet()) {
+                                    double prev = avg1.getOrDefault(entry.getKey(), 0.0);
+                                    double diff = entry.getValue() - prev;
+                                    if (diff > bestImprovement) {
+                                        bestImprovement = diff;
+                                        bestStream = entry.getKey();
+                                    }
+                                }
+                                if (!bestStream.isEmpty()) {
+                                    improvement[0] = bestStream + " improved by " + String.format("%.1f", bestImprovement) + " points";
+                                }
+                            }
+                        }
+
+                        // Per-stream subject summary
+                        try (PreparedStatement ps = conn.prepareStatement(
+                            "SELECT s.form, s.stream, su.subject_name, AVG(m.score) as avg_score, su.id as subject_id "
+                            + "FROM marks m JOIN students s ON s.id = m.student_id "
+                            + "JOIN subjects su ON su.id = m.subject_id "
+                            + "WHERE m.exam_id = ? "
+                            + "GROUP BY s.form, s.stream, m.subject_id "
+                            + "ORDER BY s.form, s.stream, su.subject_name")) {
+                            ps.setLong(1, selectedExamId);
+                            try (ResultSet rs = ps.executeQuery()) {
+                                while (rs.next()) {
+                                    String fs = "F" + rs.getInt("form") + " " + rs.getString("stream");
+                                    String subj = rs.getString("subject_name");
+                                    double avg = rs.getDouble("avg_score");
+                                    long sid = rs.getLong("subject_id");
+                                    String grade = analysisService.determineGradeAndPoints(avg, sid, selectedExamId).split("\\|")[0];
+                                    summaryData.add(new Object[]{fs, subj, avg, grade});
+                                }
+                            }
+                        }
+                    } catch (SQLException ex) { throw new RuntimeException(ex); }
+                    final String imp = improvement[0];
                     Platform.runLater(() -> {
-                        studentBox.setItems(items);
-                        loadingLabel.setVisible(false);
+                        topTable.setItems(topData);
+                        summaryTable.setItems(summaryData);
+                        improvedValue.setText(imp.isEmpty() ? "Need at least 2 exams with marks" : imp);
+                        spinner.setVisible(false);
                     });
-                }
-                return null;
-            }
-        };
-        loadStudentsTask.setOnFailed(ev -> {
-            loadingLabel.setText("Failed to load: " + loadStudentsTask.getException().getMessage());
-            loadingLabel.setTextFill(Color.RED);
-        });
-        new Thread(loadStudentsTask).start();
-
-        NumberAxis xAxis = new NumberAxis();
-        xAxis.setLabel("Exam #");
-        xAxis.setTickUnit(1);
-        xAxis.setForceZeroInRange(false);
-        NumberAxis yAxis = new NumberAxis();
-        yAxis.setLabel("Total Points");
-        yAxis.setForceZeroInRange(false);
-
-        LineChart<Number, Number> chart = new LineChart<>(xAxis, yAxis);
-        chart.setTitle("Total Points per Exam");
-        chart.setPrefHeight(300);
-        chart.setAnimated(false);
-        chart.setLegendVisible(false);
-
-        studentBox.setOnAction(e -> {
-            if (studentBox.getValue() == null) return;
-            long studentId = Long.parseLong(studentBox.getValue().split(" - ")[0]);
-            Task<List<ExamAnalysisService.StudentTrend>> task = new Task<>() {
-                @Override protected List<ExamAnalysisService.StudentTrend> call() {
-                    return analysisService.computeStudentTrend(studentId);
+                    return null;
                 }
             };
-            task.setOnSucceeded(ev -> {
-                List<ExamAnalysisService.StudentTrend> data = task.getValue();
-                XYChart.Series<Number, Number> series = new XYChart.Series<>();
-                series.setName("Total Points");
-                for (int i = 0; i < data.size(); i++) {
-                    series.getData().add(new XYChart.Data<>(i + 1, data.get(i).totalPoints()));
-                }
-                chart.getData().clear();
-                chart.getData().add(series);
-
-                if (!data.isEmpty()) {
-                    double minY = data.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).min().orElse(0);
-                    double maxY = data.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).max().orElse(0);
-                    double pad = Math.max((maxY - minY) * 0.15, 2);
-                    yAxis.setAutoRanging(false);
-                    yAxis.setLowerBound(Math.max(0, minY - pad));
-                    yAxis.setUpperBound(maxY + pad);
-                    yAxis.setTickUnit(Math.max(1, (maxY - minY + 2 * pad) / 8));
-                }
+            task.setOnFailed(ev -> {
+                spinner.setVisible(false);
+                showAlert("Analytics error: " + task.getException().getMessage());
             });
-            task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
             new Thread(task).start();
         });
 
-        section.getChildren().addAll(trendLabel, controls, chart);
+        section.getChildren().addAll(title, controls, spinner, topLabel, topTable,
+            improvedLabel, improvedValue, summaryLabel, summaryTable);
         return section;
+    }
+
+    private void loadExamList(ComboBox<String> box) {
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams ORDER BY id DESC")) {
+            while (rs.next())
+                box.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
+                    + " " + rs.getString("term") + " " + rs.getString("exam_series"));
+        } catch (SQLException e) { showAlert(e.getMessage()); }
+    }
+
+    private Map<String, Double> getStreamAverages(Connection conn, long examId) throws SQLException {
+        Map<String, Double> map = new HashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+            "SELECT s.form, s.stream, AVG(m.score) as avg_score "
+            + "FROM marks m JOIN students s ON s.id = m.student_id "
+            + "WHERE m.exam_id = ? GROUP BY s.form, s.stream")) {
+            ps.setLong(1, examId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next())
+                    map.put("F" + rs.getInt("form") + " " + rs.getString("stream"), rs.getDouble("avg_score"));
+            }
+        }
+        return map;
     }
 
     private VBox statCard(String title, String value) {
@@ -486,6 +577,12 @@ public class DashboardForm {
     private void showRecycleBin() {
         recycleBinForm = new RecycleBinForm(db, this::showDashboard);
         setContent(recycleBinForm.getView());
+    }
+
+    private void showTeacherDashboard() {
+        TeacherDashboardForm form = new TeacherDashboardForm(db, loggedInUser, loggedInUsername,
+            loggedInUserId, () -> { if (onLogout != null) onLogout.run(); });
+        setContent(form.getView());
     }
 
     private void setContent(javafx.scene.Node node) {

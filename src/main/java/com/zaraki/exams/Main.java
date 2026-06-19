@@ -14,6 +14,7 @@ public class Main extends Application {
     private String loggedInUser;
     private String loggedInUsername;
     private String loggedInRole;
+    private long loggedInUserId;
 
     @Override
     public void start(Stage stage) {
@@ -28,7 +29,8 @@ public class Main extends Application {
             loggedInUser = login.getLoggedInUser();
             loggedInUsername = login.getLoggedInUsername();
             loggedInRole = login.getLoggedInRole();
-            dashboard = new DashboardForm(stage, loggedInUser, loggedInUsername, loggedInRole, this::showLogin);
+            loggedInUserId = login.getLoggedInUserId();
+            dashboard = new DashboardForm(stage, loggedInUser, loggedInUsername, loggedInRole, loggedInUserId, this::showLogin);
             Scene mainScene = new Scene(dashboard.getView(), 1200, 750);
             mainScene.getStylesheets().add(getClass().getResource("/styles/application.css").toExternalForm());
             stage.setTitle("Thorium Exam Analysis System v2");
