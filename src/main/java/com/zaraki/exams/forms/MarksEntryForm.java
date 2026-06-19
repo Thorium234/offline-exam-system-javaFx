@@ -23,8 +23,11 @@ public class MarksEntryForm {
 
     private final DatabaseEngine db;
     private final ExamAnalysisService analysisService;
+    private final long loggedInUserId;
+    private final boolean isTeacher;
 
     private ComboBox<String> examBox;
+    private ComboBox<String> subjectBox;
     private ComboBox<Integer> formBox;
     private ComboBox<String> streamBox;
     private FlowPane subjectCardsArea;
@@ -39,9 +42,15 @@ public class MarksEntryForm {
     private int selectedOutOf;
     private String selectedSubjectName;
 
-    public MarksEntryForm(DatabaseEngine db) {
+    // Teacher-mode nodes
+    private HBox teacherSubjectRow;
+    private Button teacherLoadBtn;
+
+    public MarksEntryForm(DatabaseEngine db, long loggedInUserId, String loggedInRole) {
         this.db = db;
         this.analysisService = new ExamAnalysisService();
+        this.loggedInUserId = loggedInUserId;
+        this.isTeacher = "teacher".equals(loggedInRole);
     }
 
     public VBox getView() {
@@ -50,7 +59,9 @@ public class MarksEntryForm {
         Label header = new Label("Marks Entry");
         header.setFont(Font.font("System", FontWeight.BOLD, 24));
 
-        Label info = new Label("Select exam, class, and subject to enter marks. Grade & points auto-calculate.");
+        Label info = new Label(isTeacher
+            ? "Select exam, subject, then stream. Grade & points auto-calculate."
+            : "Select exam, class, and subject to enter marks. Grade & points auto-calculate.");
         info.setFont(Font.font("System", 13));
         info.setTextFill(Color.gray(0.5));
 
@@ -61,6 +72,13 @@ public class MarksEntryForm {
         loadExams();
         examRow.getChildren().addAll(new Label("Exam:"), examBox);
 
+        // Teacher-mode: Subject + Form + Stream (filtered)
+        teacherSubjectRow = new HBox(10);
+        subjectBox = new ComboBox<>();
+        subjectBox.setPromptText("Select Subject");
+        subjectBox.setPrefWidth(250);
+        teacherSubjectRow.getChildren().addAll(new Label("Subject:"), subjectBox);
+
         HBox classRow = new HBox(10);
         formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
         formBox.setPromptText("Form");
@@ -68,12 +86,16 @@ public class MarksEntryForm {
         streamBox.setPromptText("Stream");
         streamBox.setPrefWidth(180);
         streamBox.setEditable(true);
-        loadStreams();
+
+        teacherLoadBtn = new Button("Load Students");
+        teacherLoadBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white;");
+        teacherLoadBtn.setDisable(true);
+
         classRow.getChildren().addAll(new Label("Form:"), formBox, new Label("Stream:"), streamBox);
 
+        // Admin-mode: shared classRow + load subjects button
         Button loadBtn = new Button("Load Subjects");
         loadBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white;");
-        classRow.getChildren().add(loadBtn);
 
         subjectCardsArea = new FlowPane(12, 12);
         subjectCardsArea.setPadding(new Insets(5, 0, 5, 0));
@@ -186,15 +208,135 @@ public class MarksEntryForm {
 
         studentEntryArea.getChildren().addAll(studentTable, saveRow);
 
-        view.getChildren().addAll(header, info, examRow, classRow, subjectCardsArea, studentEntryArea);
+        if (isTeacher) {
+            classRow.getChildren().add(teacherLoadBtn);
+            view.getChildren().addAll(header, info, examRow, teacherSubjectRow, classRow, studentEntryArea);
+            setupTeacherActions();
+        } else {
+            classRow.getChildren().add(loadBtn);
+            view.getChildren().addAll(header, info, examRow, classRow, subjectCardsArea, studentEntryArea);
+            loadBtn.setOnAction(e -> loadSubjects());
+        }
 
-        loadBtn.setOnAction(e -> loadSubjects());
         saveAllBtn.setOnAction(e -> saveAllMarks());
         refreshBtn.setOnAction(e -> {
             if (selectedSubjectId > 0) loadStudents(selectedSubjectId, selectedOutOf);
         });
 
         return view;
+    }
+
+    private void setupTeacherActions() {
+        examBox.setOnAction(e -> {
+            if (examBox.getValue() == null) return;
+            selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+            loadTeacherSubjects();
+        });
+
+        subjectBox.setOnAction(e -> {
+            if (subjectBox.getValue() == null) return;
+            teacherLoadBtn.setDisable(true);
+            loadTeacherForms();
+        });
+
+        formBox.setOnAction(e -> {
+            if (formBox.getValue() == null) return;
+            loadTeacherStreams();
+        });
+
+        teacherLoadBtn.setOnAction(e -> loadTeacherMarks());
+    }
+
+    private void loadTeacherSubjects() {
+        subjectBox.getItems().clear();
+        String sql = """
+            SELECT DISTINCT s.id, s.subject_code, s.subject_name
+            FROM teacher_subjects ts
+            JOIN subjects s ON s.id = ts.subject_id
+            WHERE ts.user_id = ?
+            ORDER BY s.subject_name
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, loggedInUserId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next())
+                subjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_code") + " - " + rs.getString("subject_name"));
+        } catch (SQLException ex) { showAlert("Failed to load subjects: " + ex.getMessage()); }
+    }
+
+    private void loadTeacherForms() {
+        formBox.setValue(null);
+        streamBox.getItems().clear();
+        long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
+        selectedSubjectId = subjectId;
+        selectedSubjectName = subjectBox.getValue().split(" - ")[1];
+
+        Set<Integer> forms = new TreeSet<>();
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT DISTINCT form FROM teacher_subjects WHERE user_id = ? AND subject_id = ? ORDER BY form")) {
+            ps.setLong(1, loggedInUserId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) forms.add(rs.getInt("form"));
+        } catch (SQLException ex) { showAlert("Failed to load forms: " + ex.getMessage()); }
+        formBox.setItems(FXCollections.observableArrayList(forms));
+    }
+
+    private void loadTeacherStreams() {
+        streamBox.getItems().clear();
+        int form = formBox.getValue();
+        long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
+
+        Set<String> streams = new TreeSet<>();
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT stream FROM teacher_subjects WHERE user_id = ? AND subject_id = ? AND form = ? ORDER BY stream")) {
+            ps.setLong(1, loggedInUserId);
+            ps.setLong(2, subjectId);
+            ps.setInt(3, form);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) streams.add(rs.getString("stream"));
+        } catch (SQLException ex) { showAlert("Failed to load streams: " + ex.getMessage()); }
+
+        if (streams.size() == 1) {
+            streamBox.setItems(FXCollections.observableArrayList(streams));
+            streamBox.setValue(streams.iterator().next());
+            teacherLoadBtn.setDisable(false);
+        } else if (streams.size() > 1) {
+            streamBox.setItems(FXCollections.observableArrayList(streams));
+        } else {
+            streamBox.setItems(FXCollections.observableArrayList());
+            teacherLoadBtn.setDisable(true);
+        }
+    }
+
+    private void loadTeacherMarks() {
+        if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+        if (subjectBox.getValue() == null) { showAlert("Select a subject."); return; }
+        if (formBox.getValue() == null) { showAlert("Select a form."); return; }
+        if (streamBox.getValue() == null || streamBox.getValue().isBlank()) { showAlert("Select a stream."); return; }
+
+        selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
+        selectedSubjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
+
+        int outOf = getOutOf(selectedExamId, selectedSubjectId);
+        if (outOf <= 0) outOf = 100;
+        selectedOutOf = outOf;
+
+        loadStudents(selectedSubjectId, selectedOutOf);
+    }
+
+    private int getOutOf(long examId, long subjectId) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?")) {
+            ps.setLong(1, examId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getInt("out_of") : 100;
+        } catch (SQLException e) { return 100; }
     }
 
     private void loadSubjects() {
@@ -405,7 +547,7 @@ public class MarksEntryForm {
     private void showSubjects() {
         studentEntryArea.setVisible(false);
         subjectCardsArea.setVisible(true);
-        loadSubjects();
+        if (!isTeacher) loadSubjects();
     }
 
     private void loadExams() {
@@ -416,16 +558,6 @@ public class MarksEntryForm {
                 examBox.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
                     + " " + rs.getString("term") + " " + rs.getString("exam_series"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void loadStreams() {
-        Set<String> streams = new TreeSet<>();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM students ORDER BY stream")) {
-            while (rs.next()) streams.add(rs.getString("stream"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-        streamBox.setItems(FXCollections.observableArrayList(streams));
     }
 
     private Map<String, Object[]> getSubjectsWithMarksCount() {

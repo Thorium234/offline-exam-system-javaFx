@@ -25,18 +25,23 @@ public class BulkMarksForm {
     private final DatabaseEngine db;
     private final ExcelService excelService;
     private final Stage stage;
+    private final long loggedInUserId;
+    private final boolean isTeacher;
 
     private TextArea logArea;
     private ProgressIndicator spinner;
     private ComboBox<String> examBox;
+    private ComboBox<String> subjectBox;
     private ComboBox<Integer> formBox;
     private ComboBox<String> streamBox;
     private Label statusLabel;
 
-    public BulkMarksForm(DatabaseEngine db, Stage stage) {
+    public BulkMarksForm(DatabaseEngine db, Stage stage, long loggedInUserId, String loggedInRole) {
         this.db = db;
         this.stage = stage;
         this.excelService = new ExcelService();
+        this.loggedInUserId = loggedInUserId;
+        this.isTeacher = "teacher".equals(loggedInRole);
     }
 
     public VBox getView() {
@@ -46,7 +51,9 @@ public class BulkMarksForm {
         Label header = new Label("Bulk Marks");
         header.setFont(Font.font("System", FontWeight.BOLD, 24));
 
-        Label info = new Label("Generate Excel templates per class, then upload the filled sheets to import marks.");
+        Label info = new Label(isTeacher
+            ? "Select exam, subject, then stream to generate templates or upload filled sheets."
+            : "Generate Excel templates per class, then upload the filled sheets to import marks.");
         info.setFont(Font.font("System", 13));
         info.setTextFill(Color.gray(0.5));
 
@@ -59,6 +66,16 @@ public class BulkMarksForm {
         examRow.getChildren().addAll(new Label("Exam:"), examBox);
         section1.getChildren().add(examRow);
 
+        // Teacher-mode: Subject dropdown (filtered)
+        if (isTeacher) {
+            HBox subjRow = new HBox(10);
+            subjectBox = new ComboBox<>();
+            subjectBox.setPromptText("Select Subject");
+            subjectBox.setPrefWidth(250);
+            subjRow.getChildren().addAll(new Label("Subject:"), subjectBox);
+            section1.getChildren().add(subjRow);
+        }
+
         HBox classRow = new HBox(10);
         formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
         formBox.setPromptText("Form");
@@ -67,7 +84,7 @@ public class BulkMarksForm {
         streamBox.setPromptText("Stream");
         streamBox.setPrefWidth(180);
         streamBox.setEditable(true);
-        loadStreams();
+        if (!isTeacher) loadStreams();
         classRow.getChildren().addAll(new Label("Class:"), formBox, streamBox);
         section1.getChildren().add(classRow);
 
@@ -94,6 +111,8 @@ public class BulkMarksForm {
         logArea.setStyle("-fx-font-family: monospace; -fx-font-size: 12;");
 
         view.getChildren().addAll(header, info, section1, section2, statusLabel, logArea);
+
+        if (isTeacher) setupTeacherActions();
 
         genBtn.setOnAction(e -> {
             if (!validateSelection()) return;
@@ -176,6 +195,84 @@ public class BulkMarksForm {
         return view;
     }
 
+    private void setupTeacherActions() {
+        examBox.setOnAction(e -> {
+            if (examBox.getValue() == null) return;
+            loadTeacherSubjects();
+        });
+
+        subjectBox.setOnAction(e -> {
+            if (subjectBox.getValue() == null) return;
+            loadTeacherForms();
+        });
+
+        formBox.setOnAction(e -> {
+            if (formBox.getValue() == null) return;
+            loadTeacherStreams();
+        });
+    }
+
+    private void loadTeacherSubjects() {
+        subjectBox.getItems().clear();
+        String sql = """
+            SELECT DISTINCT s.id, s.subject_code, s.subject_name
+            FROM teacher_subjects ts
+            JOIN subjects s ON s.id = ts.subject_id
+            WHERE ts.user_id = ?
+            ORDER BY s.subject_name
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, loggedInUserId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next())
+                subjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_code") + " - " + rs.getString("subject_name"));
+        } catch (SQLException ex) { showAlert("Failed to load subjects: " + ex.getMessage()); }
+    }
+
+    private void loadTeacherForms() {
+        formBox.setValue(null);
+        streamBox.getItems().clear();
+        long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
+
+        Set<Integer> forms = new TreeSet<>();
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT DISTINCT form FROM teacher_subjects WHERE user_id = ? AND subject_id = ? ORDER BY form")) {
+            ps.setLong(1, loggedInUserId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) forms.add(rs.getInt("form"));
+        } catch (SQLException ex) { showAlert("Failed to load forms: " + ex.getMessage()); }
+        formBox.setItems(FXCollections.observableArrayList(forms));
+    }
+
+    private void loadTeacherStreams() {
+        streamBox.getItems().clear();
+        int form = formBox.getValue();
+        long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
+
+        Set<String> streams = new TreeSet<>();
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT stream FROM teacher_subjects WHERE user_id = ? AND subject_id = ? AND form = ? ORDER BY stream")) {
+            ps.setLong(1, loggedInUserId);
+            ps.setLong(2, subjectId);
+            ps.setInt(3, form);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) streams.add(rs.getString("stream"));
+        } catch (SQLException ex) { showAlert("Failed to load streams: " + ex.getMessage()); }
+
+        if (streams.size() == 1) {
+            streamBox.setItems(FXCollections.observableArrayList(streams));
+            streamBox.setValue(streams.iterator().next());
+        } else if (streams.size() > 1) {
+            streamBox.setItems(FXCollections.observableArrayList(streams));
+        } else {
+            streamBox.setItems(FXCollections.observableArrayList());
+        }
+    }
+
     private VBox sectionBox(String title) {
         VBox box = new VBox(10);
         box.setPadding(new Insets(12, 15, 12, 15));
@@ -189,6 +286,7 @@ public class BulkMarksForm {
 
     private boolean validateSelection() {
         if (examBox.getValue() == null) { showAlert("Select an exam."); return false; }
+        if (isTeacher && (subjectBox.getValue() == null)) { showAlert("Select a subject."); return false; }
         if (formBox.getValue() == null) { showAlert("Select a form."); return false; }
         if (streamBox.getValue() == null || streamBox.getValue().isBlank()) {
             showAlert("Select or type a stream."); return false;

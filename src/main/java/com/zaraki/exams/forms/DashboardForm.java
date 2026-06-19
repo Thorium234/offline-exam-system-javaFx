@@ -562,12 +562,12 @@ public class DashboardForm {
     }
 
     private void showMarksEntry() {
-        marksEntryForm = new MarksEntryForm(db);
+        marksEntryForm = new MarksEntryForm(db, loggedInUserId, loggedInRole);
         setContent(marksEntryForm.getView());
     }
 
     private void showBulkMarks() {
-        bulkMarksForm = new BulkMarksForm(db, stage);
+        bulkMarksForm = new BulkMarksForm(db, stage, loggedInUserId, loggedInRole);
         setContent(bulkMarksForm.getView());
     }
 
