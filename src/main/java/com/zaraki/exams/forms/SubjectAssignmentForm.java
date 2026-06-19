@@ -60,6 +60,12 @@ public class SubjectAssignmentForm {
         streamBox.setEditable(true);
         streamBox.setPromptText("Stream (e.g. A)");
         streamBox.setPrefWidth(150);
+        loadStreams(null);
+
+        formBox.setOnAction(e -> {
+            Integer f = formBox.getValue();
+            loadStreams(f);
+        });
 
         Button loadBtn = new Button("Load Subjects");
         loadBtn.setStyle("-fx-background-color: " + PRIMARY + "; -fx-text-fill: white;");
@@ -136,6 +142,19 @@ public class SubjectAssignmentForm {
 
         view.getChildren().addAll(header, controls, spinner, subjectList, saveBtn, statusLabel);
         setView(view);
+    }
+
+    private void loadStreams(Integer form) {
+        streamBox.getItems().clear();
+        String sql = form == null
+            ? "SELECT DISTINCT stream FROM streams ORDER BY stream"
+            : "SELECT stream FROM streams WHERE form = ? ORDER BY stream";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (form != null) ps.setInt(1, form);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) streamBox.getItems().add(rs.getString("stream"));
+        } catch (SQLException e) { /* ignore */ }
     }
 
     private void loadSubjects() {
