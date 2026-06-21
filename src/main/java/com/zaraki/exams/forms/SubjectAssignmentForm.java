@@ -1,15 +1,15 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.UIUtils;
+import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 
 import java.sql.*;
 import java.util.*;
@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 
 public class SubjectAssignmentForm {
 
-    private static final String PRIMARY = "#1a237e";
+
 
     private final DatabaseEngine db;
     private final StackPane root;
@@ -48,9 +48,7 @@ public class SubjectAssignmentForm {
         VBox view = new VBox(15);
         view.setPadding(new Insets(20));
 
-        Label header = new Label("Stream Subject Assignment");
-        header.setFont(Font.font("System", FontWeight.BOLD, 22));
-        header.setTextFill(Color.web(PRIMARY));
+        Label header = UIUtils.makeHeader("Stream Subject Assignment");
 
         HBox controls = new HBox(15);
         formBox.setItems(FXCollections.observableArrayList(1, 2, 3, 4));
@@ -81,7 +79,6 @@ public class SubjectAssignmentForm {
         saveBtn.setDisable(true);
 
         statusLabel = new Label();
-        statusLabel.setFont(Font.font("System", 12));
 
         spinner = new ProgressIndicator();
         spinner.setPrefSize(20, 20);
@@ -135,7 +132,7 @@ public class SubjectAssignmentForm {
             });
             task.setOnFailed(ev -> {
                 spinner.setVisible(false);
-                showAlert("Error: " + task.getException().getMessage());
+                UIUtils.showError("Error: " + task.getException().getMessage());
             });
             new Thread(task).start();
         });
@@ -159,7 +156,7 @@ public class SubjectAssignmentForm {
 
     private void loadSubjects() {
         if (formBox.getValue() == null || streamBox.getValue() == null || streamBox.getValue().isBlank()) {
-            showAlert("Select a form and enter a stream.");
+            UIUtils.showError("Select a form and enter a stream.");
             return;
         }
         int form = formBox.getValue();
@@ -206,15 +203,12 @@ public class SubjectAssignmentForm {
         };
         task.setOnFailed(ev -> {
             spinner.setVisible(false);
-            showAlert("Error: " + task.getException().getMessage());
+            UIUtils.showError("Error: " + task.getException().getMessage());
         });
         new Thread(task).start();
     }
 
     private record SubjectInfo(long id, String code, String name) {}
 
-    private void showAlert(String msg) {
-        javafx.application.Platform.runLater(() ->
-            new Alert(Alert.AlertType.ERROR, msg).showAndWait());
-    }
+
 }

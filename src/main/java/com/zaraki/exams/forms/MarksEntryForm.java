@@ -2,7 +2,7 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.service.ExamAnalysisService;
-import javafx.application.Platform;
+import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -56,14 +56,11 @@ public class MarksEntryForm {
     public VBox getView() {
         VBox view = new VBox(15);
 
-        Label header = new Label("Marks Entry");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Marks Entry");
 
         Label info = new Label(isTeacher
             ? "Select exam, subject, then stream. Grade & points auto-calculate."
             : "Select exam, class, and subject to enter marks. Grade & points auto-calculate.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         HBox examRow = new HBox(10);
         examBox = new ComboBox<>();
@@ -106,8 +103,6 @@ public class MarksEntryForm {
 
         HBox studentHeader = new HBox(10);
         selectedSubjectLabel = new Label();
-        selectedSubjectLabel.setFont(Font.font("System", FontWeight.BOLD, 16));
-        selectedSubjectLabel.setTextFill(Color.web("#1a237e"));
         Button backBtn = new Button("Back to Subjects");
         backBtn.setOnAction(e -> showSubjects());
         studentHeader.getChildren().addAll(selectedSubjectLabel, backBtn);
@@ -145,9 +140,9 @@ public class MarksEntryForm {
                 row.dirty = true;
                 studentTable.refresh();
             } else if (newVal != null && !Double.isFinite(newVal)) {
-                showAlert("Invalid score value.");
+                UIUtils.showError("Invalid score value.");
             } else if (newVal != null) {
-                showAlert("Score must be between 0 and " + selectedOutOf + ".");
+                UIUtils.showError("Score must be between 0 and " + selectedOutOf + ".");
             }
         });
         colScore.setPrefWidth(100);
@@ -202,8 +197,7 @@ public class MarksEntryForm {
         saveAllBtn = new Button("Save All Marks");
         saveAllBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
         Button refreshBtn = new Button("Refresh");
-        statusLabel = new Label();
-        statusLabel.setTextFill(Color.gray(0.5));
+        statusLabel = UIUtils.makeStatusLabel();
         saveRow.getChildren().addAll(saveAllBtn, refreshBtn, statusLabel);
 
         studentEntryArea.getChildren().addAll(studentTable, saveRow);
@@ -262,7 +256,7 @@ public class MarksEntryForm {
             ResultSet rs = ps.executeQuery();
             while (rs.next())
                 subjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_code") + " - " + rs.getString("subject_name"));
-        } catch (SQLException ex) { showAlert("Failed to load subjects: " + ex.getMessage()); }
+        } catch (SQLException ex) { UIUtils.showError("Failed to load subjects: " + ex.getMessage()); }
     }
 
     private void loadTeacherForms() {
@@ -280,7 +274,7 @@ public class MarksEntryForm {
             ps.setLong(2, subjectId);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) forms.add(rs.getInt("form"));
-        } catch (SQLException ex) { showAlert("Failed to load forms: " + ex.getMessage()); }
+        } catch (SQLException ex) { UIUtils.showError("Failed to load forms: " + ex.getMessage()); }
         formBox.setItems(FXCollections.observableArrayList(forms));
     }
 
@@ -298,7 +292,7 @@ public class MarksEntryForm {
             ps.setInt(3, form);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) streams.add(rs.getString("stream"));
-        } catch (SQLException ex) { showAlert("Failed to load streams: " + ex.getMessage()); }
+        } catch (SQLException ex) { UIUtils.showError("Failed to load streams: " + ex.getMessage()); }
 
         if (streams.size() == 1) {
             streamBox.setItems(FXCollections.observableArrayList(streams));
@@ -313,10 +307,10 @@ public class MarksEntryForm {
     }
 
     private void loadTeacherMarks() {
-        if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
-        if (subjectBox.getValue() == null) { showAlert("Select a subject."); return; }
-        if (formBox.getValue() == null) { showAlert("Select a form."); return; }
-        if (streamBox.getValue() == null || streamBox.getValue().isBlank()) { showAlert("Select a stream."); return; }
+        if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
+        if (subjectBox.getValue() == null) { UIUtils.showError("Select a subject."); return; }
+        if (formBox.getValue() == null) { UIUtils.showError("Select a form."); return; }
+        if (streamBox.getValue() == null || streamBox.getValue().isBlank()) { UIUtils.showError("Select a stream."); return; }
 
         selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
         selectedSubjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
@@ -340,9 +334,9 @@ public class MarksEntryForm {
     }
 
     private void loadSubjects() {
-        if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
-        if (formBox.getValue() == null) { showAlert("Select a form."); return; }
-        if (streamBox.getValue() == null || streamBox.getValue().isBlank()) { showAlert("Select a stream."); return; }
+        if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
+        if (formBox.getValue() == null) { UIUtils.showError("Select a form."); return; }
+        if (streamBox.getValue() == null || streamBox.getValue().isBlank()) { UIUtils.showError("Select a stream."); return; }
 
         selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
         studentEntryArea.setVisible(false);
@@ -352,13 +346,13 @@ public class MarksEntryForm {
         String stream = streamBox.getValue();
         int studentCount = countStudents(form, stream);
         if (studentCount == 0) {
-            showAlert("No students found in Form " + form + " - " + stream);
+            UIUtils.showError("No students found in Form " + form + " - " + stream);
             return;
         }
 
         Map<String, Object[]> subjects = getSubjectsWithMarksCount();
         if (subjects.isEmpty()) {
-            showAlert("No subjects defined. Add subjects first.");
+            UIUtils.showError("No subjects defined. Add subjects first.");
             return;
         }
 
@@ -397,14 +391,10 @@ public class MarksEntryForm {
             String fg = markCount > 0 ? "#e8f5e9" : "#f5f5f5";
             card.setStyle(card.getStyle() + "-fx-background-color: " + fg + ";");
 
-            card.setOnMouseEntered(e ->
-                card.setStyle(card.getStyle().replace("-fx-border-color: #e0e0e0", "-fx-border-color: #1a237e")
-                    .replace("-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2)",
-                        "-fx-effect: dropshadow(gaussian, rgba(26,35,126,0.2), 8, 0, 0, 2)")));
-            card.setOnMouseExited(e ->
-                card.setStyle(card.getStyle().replace("-fx-border-color: #1a237e", "-fx-border-color: #e0e0e0")
-                    .replace("-fx-effect: dropshadow(gaussian, rgba(26,35,126,0.2), 8, 0, 0, 2)",
-                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2)")));
+            String normalStyle = card.getStyle();
+            card.setOnMouseEntered(e -> card.setStyle(card.getStyle()
+                .replace("-fx-border-color: #e0e0e0", "-fx-border-color: #1a237e")));
+            card.setOnMouseExited(e -> card.setStyle(normalStyle));
 
             long sid = subjId;
             int oo = outOf;
@@ -481,7 +471,7 @@ public class MarksEntryForm {
                     deviation != null ? String.format("%+.1f", deviation) : ""
                 ));
             }
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
         studentTable.setItems(rows);
         statusLabel.setText(selectedSubjectName + " | " + rows.size() + " students");
     }
@@ -533,12 +523,12 @@ public class MarksEntryForm {
                 loadStudents(subjectId, selectedOutOf);
             } catch (Exception e) {
                 conn.rollback();
-                showAlert("Failed to save: " + e.getMessage());
+                UIUtils.showError("Failed to save: " + e.getMessage());
             } finally {
                 conn.setAutoCommit(true);
             }
         } catch (SQLException e) {
-            showAlert("DB error: " + e.getMessage());
+            UIUtils.showError("DB error: " + e.getMessage());
         }
     }
 
@@ -555,7 +545,7 @@ public class MarksEntryForm {
             while (rs.next())
                 examBox.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
                     + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private Map<String, Object[]> getSubjectsWithMarksCount() {
@@ -588,7 +578,7 @@ public class MarksEntryForm {
                     rs.getInt("out_of"),
                     rs.getInt("mark_count")
                 });
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
         return map;
     }
 
@@ -598,7 +588,7 @@ public class MarksEntryForm {
             ps.setLong(1, subjectId);
             ResultSet rs = ps.executeQuery();
             if (rs.next()) return rs.getString("subject_name");
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
         return "Subject";
     }
 
@@ -620,10 +610,6 @@ public class MarksEntryForm {
             ResultSet rs = ps.executeQuery();
             return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException e) { return 0; }
-    }
-
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
     }
 
     public static class StudentMarkRow {

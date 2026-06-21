@@ -1,6 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.UIUtils;
+import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -23,7 +25,6 @@ import java.util.stream.Collectors;
 
 public class StudentBrowserForm {
 
-    private static final String PRIMARY = "#1a237e";
     private static final String CARD_STYLE = "-fx-background-color: white; -fx-background-radius: 10; "
         + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);";
 
@@ -55,8 +56,7 @@ public class StudentBrowserForm {
         styleBackBtn(backBtn);
         backBtn.setOnAction(e -> onBackToDashboard.run());
 
-        Label header = new Label("Browse Students");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Browse Students");
 
         Label sub = new Label("Select a form to view its students");
         sub.setFont(Font.font("System", 14));
@@ -214,7 +214,7 @@ public class StudentBrowserForm {
         };
         loadTask.setOnFailed(ev -> {
             spinner.setVisible(false);
-            showAlert("Failed to load: " + loadTask.getException().getMessage());
+            UIUtils.showError("Failed to load: " + loadTask.getException().getMessage());
         });
         new Thread(loadTask).start();
 
@@ -232,7 +232,7 @@ public class StudentBrowserForm {
 
         deallocateBtn.setOnAction(e -> {
             List<StudentRow> selected = data.stream().filter(StudentRow::isSelected).collect(Collectors.toList());
-            if (selected.isEmpty()) { showAlert("No students selected."); return; }
+            if (selected.isEmpty()) { UIUtils.showError("No students selected."); return; }
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                 "Deallocate " + selected.size() + " student(s)?\n"
                 + "They will be moved to the Recycle Bin and hidden from active views.",
@@ -258,9 +258,9 @@ public class StudentBrowserForm {
                 data.removeIf(r -> ids.contains(r.id));
                 table.setItems(data);
                 updateStatus(statusLabel, table);
-                showInfo("Deallocated " + selected.size() + " student(s).");
+                UIUtils.showInfo("Deallocated " + selected.size() + " student(s).");
             });
-            deallocTask.setOnFailed(ev2 -> showAlert("Error: " + deallocTask.getException().getMessage()));
+            deallocTask.setOnFailed(ev2 -> UIUtils.showError("Error: " + deallocTask.getException().getMessage()));
             new Thread(deallocTask).start();
         });
 
@@ -346,11 +346,5 @@ public class StudentBrowserForm {
             + "-fx-font-size: 13; -fx-padding: 5 0 5 0;");
     }
 
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
-    }
 
-    private void showInfo(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait());
-    }
 }

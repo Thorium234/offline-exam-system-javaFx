@@ -1,14 +1,12 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 
 import java.sql.*;
 
@@ -24,12 +22,9 @@ public class SubjectForm {
 
     public VBox getView() {
         VBox view = new VBox(15);
-        Label header = new Label("Subjects");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Subjects");
 
         Label info = new Label("Add new subjects or delete existing ones. Subjects with existing marks or assignments cannot be deleted.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         HBox form = new HBox(10);
         TextField codeField = new TextField(); codeField.setPromptText("Code");
@@ -77,11 +72,11 @@ public class SubjectForm {
             String dept = deptField.getText().trim();
             String grp = grpBox.getValue();
             if (code.isEmpty() || name.isEmpty() || dept.isEmpty()) {
-                showAlert("Code, Name, and Department are required.");
+                UIUtils.showError("Code, Name, and Department are required.");
                 return;
             }
             if (grp == null) {
-                showAlert("Select a grouping (Compulsory or Elective).");
+                UIUtils.showError("Select a grouping (Compulsory or Elective).");
                 return;
             }
             try (Connection conn = db.getConnection();
@@ -94,7 +89,7 @@ public class SubjectForm {
                 ps.executeUpdate();
                 load();
                 codeField.clear(); nameField.clear(); deptField.clear(); grpBox.setValue(null);
-            } catch (Exception ex) { showAlert(ex.getMessage()); }
+            } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
         });
 
         view.getChildren().addAll(header, info, form, table);
@@ -112,12 +107,12 @@ public class SubjectForm {
             int rows = ps.executeUpdate();
             if (rows > 0) {
                 load();
-                showInfo("Deleted " + row.code);
+                UIUtils.showInfo("Deleted " + row.code);
             } else {
-                showAlert("Subject not found or cannot be deleted (may have existing marks/assignments).");
+                UIUtils.showError("Subject not found or cannot be deleted (may have existing marks/assignments).");
             }
         } catch (SQLException ex) {
-            showAlert("Cannot delete: " + ex.getMessage());
+            UIUtils.showError("Cannot delete: " + ex.getMessage());
         }
     }
 
@@ -129,15 +124,7 @@ public class SubjectForm {
             while (rs.next())
                 data.add(new SubjectRow(rs.getString("subject_code"), rs.getString("subject_name"),
                     rs.getString("department"), rs.getString("grouping")));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void showAlert(String msg) {
-        javafx.application.Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
-    }
-
-    private void showInfo(String msg) {
-        javafx.application.Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait());
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     public static class SubjectRow {

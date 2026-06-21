@@ -2,6 +2,8 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.service.ExamAnalysisService;
+import com.zaraki.exams.util.UIUtils;
+import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
@@ -25,7 +27,6 @@ import java.util.stream.Collectors;
 
 public class TeacherDashboardForm {
 
-    private static final String PRIMARY = "#1a237e";
     private static final String CARD_STYLE = "-fx-background-color: white; -fx-background-radius: 10; "
         + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);";
 
@@ -60,8 +61,7 @@ public class TeacherDashboardForm {
     private void showOverview() {
         VBox view = new VBox(20);
 
-        Label header = new Label("My Dashboard");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("My Dashboard");
 
         Label roleBadge = new Label("Logged in as " + loggedInUser + " (Teacher)");
         roleBadge.setFont(Font.font("System", 13));
@@ -147,7 +147,7 @@ public class TeacherDashboardForm {
         });
         loadTask.setOnFailed(ev -> {
             spinner.setVisible(false);
-            showAlert("Failed to load: " + loadTask.getException().getMessage());
+            UIUtils.showError("Failed to load: " + loadTask.getException().getMessage());
         });
         new Thread(loadTask).start();
 
@@ -268,15 +268,15 @@ public class TeacherDashboardForm {
                 row.points = Integer.parseInt(parts[1]);
                 table.refresh();
             } else if (v != null && !Double.isFinite(v)) {
-                showAlert("Invalid score value.");
+                UIUtils.showError("Invalid score value.");
             } else if (v != null) {
-                showAlert("Score must be between 0 and " + selectedOutOf + ".");
+                UIUtils.showError("Score must be between 0 and " + selectedOutOf + ".");
             }
         });
 
         loadBtn.setOnAction(e -> {
-            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
-            if (subjectBox.getValue() == null) { showAlert("Select a subject."); return; }
+            if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
+            if (subjectBox.getValue() == null) { UIUtils.showError("Select a subject."); return; }
             selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
             String subjVal = subjectBox.getValue();
             selectedSubjectId = Long.parseLong(subjVal.split(" - ")[0]);
@@ -299,13 +299,13 @@ public class TeacherDashboardForm {
                 cScore.setText("Score / " + selectedOutOf);
                 loadStudentMarks(data, table, statusLabel, spinner, form, stream);
             });
-            outOfTask.setOnFailed(ev2 -> showAlert("Error: " + outOfTask.getException().getMessage()));
+            outOfTask.setOnFailed(ev2 -> UIUtils.showError("Error: " + outOfTask.getException().getMessage()));
             new Thread(outOfTask).start();
         });
 
         saveBtn.setOnAction(e -> {
             List<MarkRow> dirty = data.stream().filter(r -> r.dirty).collect(Collectors.toList());
-            if (dirty.isEmpty()) { showAlert("No changes to save."); return; }
+            if (dirty.isEmpty()) { UIUtils.showError("No changes to save."); return; }
             spinner.setVisible(true);
             Task<Integer> saveTask = new Task<>() {
                 @Override protected Integer call() {
@@ -337,7 +337,7 @@ public class TeacherDashboardForm {
             });
             saveTask.setOnFailed(ev2 -> {
                 spinner.setVisible(false);
-                showAlert("Save failed: " + saveTask.getException().getMessage());
+                UIUtils.showError("Save failed: " + saveTask.getException().getMessage());
             });
             new Thread(saveTask).start();
         });
@@ -391,7 +391,7 @@ public class TeacherDashboardForm {
         };
         task.setOnFailed(ev -> {
             spinner.setVisible(false);
-            showAlert("Error: " + task.getException().getMessage());
+            UIUtils.showError("Error: " + task.getException().getMessage());
         });
         new Thread(task).start();
     }
@@ -403,7 +403,7 @@ public class TeacherDashboardForm {
             while (rs.next())
                 box.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
                     + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     // ───── Row / Data Classes ─────
@@ -437,7 +437,4 @@ public class TeacherDashboardForm {
         public boolean isDirty() { return dirty; }
     }
 
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
-    }
 }

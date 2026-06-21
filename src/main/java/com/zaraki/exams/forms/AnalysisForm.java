@@ -2,9 +2,9 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
+import com.zaraki.exams.util.UIUtils;
 import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.service.ExamAnalysisService;
-import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -13,8 +13,6 @@ import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 
 import com.zaraki.exams.reporting.ReportCardGenerator;
 import javafx.stage.FileChooser;
@@ -40,10 +38,9 @@ public class AnalysisForm {
 
     public VBox getView() {
         VBox view = new VBox(15);
-        Label header = new Label("Exam Analysis");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Exam Analysis");
 
-        loadExams(examBox);
+        UIUtils.loadExams(examBox);
 
         Button autoGradeBtn = new Button("Auto-Grade All");
         Button rankBtn = new Button("Compute Rankings");
@@ -67,7 +64,7 @@ public class AnalysisForm {
         rankBtn.setOnAction(e -> {
             if (examBox.getValue() == null) return;
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            if (!PublishForm.isExamReleased(examId)) { showAlert("Exam not released by admin. Analysis unavailable."); return; }
+            if (!PublishForm.isExamReleased(examId)) { UIUtils.showError("Exam not released by admin. Analysis unavailable."); return; }
             spinner.setVisible(true);
             computeAllTabs(examId);
         });
@@ -82,8 +79,8 @@ public class AnalysisForm {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> { showInfo("Auto-grading complete."); spinner.setVisible(false); });
-            task.setOnFailed(ev -> { showAlert(task.getException().getMessage()); spinner.setVisible(false); });
+            task.setOnSucceeded(ev -> { UIUtils.showInfo("Auto-grading complete."); spinner.setVisible(false); });
+            task.setOnFailed(ev -> { UIUtils.showError(task.getException().getMessage()); spinner.setVisible(false); });
             new Thread(task).start();
         });
 
@@ -111,15 +108,15 @@ public class AnalysisForm {
 
         classTable.getColumns().addAll(
             cPos, cPrevPos, cPosChg,
-            col("Admission", "admissionNumber", 100),
-            col("Name", "fullName", 170),
-            col("Stream", "stream", 70),
-            col("Marks", "totalMarks", 70),
-            col("Pts", "totalPoints", 50),
-            col("Prev Pts", "prevTotalMarks", 65),
-            col("Mean", "meanPoints", 55),
-            col("Grade", "meanGrade", 65),
-            col("Out Of", "classSize", 55)
+            UIUtils.col("Admission", "admissionNumber", 100),
+            UIUtils.col("Name", "fullName", 170),
+            UIUtils.col("Stream", "stream", 70),
+            UIUtils.col("Marks", "totalMarks", 70),
+            UIUtils.col("Pts", "totalPoints", 50),
+            UIUtils.col("Prev Pts", "prevTotalMarks", 65),
+            UIUtils.col("Mean", "meanPoints", 55),
+            UIUtils.col("Grade", "meanGrade", 65),
+            UIUtils.col("Out Of", "classSize", 55)
         );
 
         content.getChildren().add(classTable);
@@ -137,13 +134,13 @@ public class AnalysisForm {
         content.setPadding(new Insets(10));
         subjectTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         subjectTable.getColumns().addAll(
-            col("Rank", "rank", 50),
-            col("Subject", "subjectName", 200),
-            col("Dept", "department", 120),
-            col("Mean Score", "meanScore", 100),
-            col("Mean Grade", "meanGrade", 90),
-            col("Std Dev", "stdDev", 90),
-            col("Candidates", "candidates", 90)
+            UIUtils.col("Rank", "rank", 50),
+            UIUtils.col("Subject", "subjectName", 200),
+            UIUtils.col("Dept", "department", 120),
+            UIUtils.col("Mean Score", "meanScore", 100),
+            UIUtils.col("Mean Grade", "meanGrade", 90),
+            UIUtils.col("Std Dev", "stdDev", 90),
+            UIUtils.col("Candidates", "candidates", 90)
         );
         content.getChildren().add(subjectTable);
         tab.setContent(content);
@@ -200,7 +197,7 @@ public class AnalysisForm {
             for (var gd : data) rows.add(new GradeDistRow(gd.subjectName(), gd.gradeCounts()));
             gradeDistTable.setItems(rows);
         });
-        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+        task.setOnFailed(ev -> UIUtils.showError(task.getException().getMessage()));
         new Thread(task).start();
     }
 
@@ -225,8 +222,8 @@ public class AnalysisForm {
         VBox content = new VBox(10);
         content.setPadding(new Insets(10));
 
-        loadExams(exam1Box);
-        loadExams(exam2Box);
+        UIUtils.loadExams(exam1Box);
+        UIUtils.loadExams(exam2Box);
         exam1Box.setPromptText("Earlier Exam");
         exam2Box.setPromptText("Later Exam");
 
@@ -285,7 +282,7 @@ public class AnalysisForm {
                 compareTable.setItems(rows);
                 spinner.setVisible(false);
             });
-            task.setOnFailed(ev -> { showAlert(task.getException().getMessage()); spinner.setVisible(false); });
+            task.setOnFailed(ev -> { UIUtils.showError(task.getException().getMessage()); spinner.setVisible(false); });
             new Thread(task).start();
         });
 
@@ -364,12 +361,12 @@ public class AnalysisForm {
                 subjectTable.setItems(sRows);
                 spinner.setVisible(false);
             });
-            subTask.setOnFailed(ev2 -> { showAlert(subTask.getException().getMessage()); spinner.setVisible(false); });
+            subTask.setOnFailed(ev2 -> { UIUtils.showError(subTask.getException().getMessage()); spinner.setVisible(false); });
             new Thread(subTask).start();
 
             populateGradeDistribution(examId);
         });
-        mainTask.setOnFailed(ev -> { showAlert(mainTask.getException().getMessage()); spinner.setVisible(false); });
+        mainTask.setOnFailed(ev -> { UIUtils.showError(mainTask.getException().getMessage()); spinner.setVisible(false); });
         new Thread(mainTask).start();
     }
 
@@ -387,7 +384,7 @@ public class AnalysisForm {
         VBox content = new VBox(10);
         content.setPadding(new Insets(10));
 
-        loadExams(meritExamBox);
+        UIUtils.loadExams(meritExamBox);
         HBox examRow = new HBox(10, new Label("Exam:"), meritExamBox);
         meritExamBox.setPrefWidth(300);
 
@@ -396,11 +393,11 @@ public class AnalysisForm {
         meritFormRb.setToggleGroup(meritGroupType);
         meritStreamRb.setSelected(true);
         meritGroupBox.setPrefWidth(200);
-        loadStreams(meritGroupBox);
+        UIUtils.loadStreams(meritGroupBox);
         meritGroupType.selectedToggleProperty().addListener((obs, old, cur) -> {
             meritGroupBox.getItems().clear();
-            if (cur == meritStreamRb) loadStreams(meritGroupBox);
-            else loadForms(meritGroupBox);
+            if (cur == meritStreamRb) UIUtils.loadStreams(meritGroupBox);
+            else UIUtils.loadForms(meritGroupBox);
         });
         typeRow.getChildren().addAll(new Label("Group By:"), meritStreamRb, meritFormRb, meritGroupBox);
 
@@ -415,16 +412,21 @@ public class AnalysisForm {
         meritTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
         showBtn.setOnAction(e -> {
-            if (meritExamBox.getValue() == null) { showAlert("Select exam."); return; }
-            if (meritGroupBox.getValue() == null) { showAlert("Select group."); return; }
+            if (meritExamBox.getValue() == null) { UIUtils.showError("Select exam."); return; }
+            if (meritGroupBox.getValue() == null) { UIUtils.showError("Select group."); return; }
             long examId = Long.parseLong(meritExamBox.getValue().split(" - ")[0]);
             String groupBy = meritStreamRb.isSelected() ? "stream" : "form";
             String groupValue = meritGroupBox.getValue();
             mSpinner.setVisible(true);
-            Platform.runLater(() -> {
-                loadMeritTable(examId, groupBy, groupValue);
-                mSpinner.setVisible(false);
-            });
+            Task<Void> task = new Task<>() {
+                @Override protected Void call() {
+                    loadMeritTable(examId, groupBy, groupValue);
+                    return null;
+                }
+            };
+            task.setOnSucceeded(ev -> mSpinner.setVisible(false));
+            task.setOnFailed(ev -> { mSpinner.setVisible(false); UIUtils.showError(task.getException().getMessage()); });
+            new Thread(task).start();
         });
 
         exportPdfBtn.setOnAction(e -> {
@@ -447,8 +449,8 @@ public class AnalysisForm {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> { mSpinner.setVisible(false); showInfo("Merit list PDF saved."); });
-            task.setOnFailed(ev -> { mSpinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            task.setOnSucceeded(ev -> { mSpinner.setVisible(false); UIUtils.showInfo("Merit list PDF saved."); });
+            task.setOnFailed(ev -> { mSpinner.setVisible(false); UIUtils.showError(task.getException().getMessage()); });
             new Thread(task).start();
         });
 
@@ -464,18 +466,16 @@ public class AnalysisForm {
         try {
             data = analysisService.computeMeritReport(examId, filterCol, groupValue);
         } catch (Exception e) {
-            showAlert(e.getMessage());
+            UIUtils.showError(e.getMessage());
             return;
         }
 
         List<ExamAnalysisService.MeritSubject> subjects = data.subjects();
         List<ExamAnalysisService.MeritStudent> students = data.students();
 
-        // Map students for table lookup
         Map<Long, ExamAnalysisService.MeritStudent> studentMap = new HashMap<>();
         for (var s : students) studentMap.put(s.studentId(), s);
 
-        // Build TableView
         meritTable.getColumns().clear();
         TableColumn<ExamAnalysisService.MeritStudent, String> cAdm = new TableColumn<>("Adm");
         cAdm.setCellValueFactory(cd -> new SimpleObjectProperty<>(cd.getValue().admissionNumber()));
@@ -523,45 +523,7 @@ public class AnalysisForm {
         meritTable.setItems(FXCollections.observableArrayList(students));
     }
 
-    private void loadStreams(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
-            while (rs.next()) box.getItems().add(rs.getString("stream"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void loadForms(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
-            while (rs.next()) box.getItems().add(rs.getString("form"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    // ─────────── Merit List helpers removed — now in ExamAnalysisService ───────────
-
-    // ────────────────────── Helpers ──────────────────────
-
-    private void loadExams(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams ORDER BY id DESC")) {
-            while (rs.next())
-                box.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
-                    + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private static <T> TableColumn<T, ?> col(String title, String prop, int width) {
-        TableColumn<T, ?> c = new TableColumn<>(title);
-        c.setCellValueFactory(new PropertyValueFactory<>(prop));
-        c.setPrefWidth(width);
-        return c;
-    }
-
-    private void showAlert(String msg) { Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait()); }
-    private void showInfo(String msg) { Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait()); }
+    // ─────────── Helpers removed — using UIUtils ───────────
 
     // ────────────────────── Row Classes ──────────────────────
 

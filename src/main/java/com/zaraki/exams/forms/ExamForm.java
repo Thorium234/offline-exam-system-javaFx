@@ -1,13 +1,11 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.*;
-import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 
 import java.sql.*;
 
@@ -21,8 +19,7 @@ public class ExamForm {
 
     public VBox getView() {
         VBox view = new VBox(15);
-        Label header = new Label("Exams");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Exams");
 
         HBox form = new HBox(10);
         TextField yearField = new TextField(); yearField.setPromptText("Year (e.g. 2026)");
@@ -34,17 +31,13 @@ public class ExamForm {
 
         TableView<ExamRow> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        TableColumn<ExamRow, Long> cId = new TableColumn<>("ID");
-        cId.setCellValueFactory(new PropertyValueFactory<>("id")); cId.setPrefWidth(60);
-        TableColumn<ExamRow, String> cYear = new TableColumn<>("Year");
-        cYear.setCellValueFactory(new PropertyValueFactory<>("year")); cYear.setPrefWidth(120);
-        TableColumn<ExamRow, String> cTerm = new TableColumn<>("Term");
-        cTerm.setCellValueFactory(new PropertyValueFactory<>("term")); cTerm.setPrefWidth(120);
-        TableColumn<ExamRow, String> cSeries = new TableColumn<>("Series");
-        cSeries.setCellValueFactory(new PropertyValueFactory<>("series")); cSeries.setPrefWidth(180);
-        TableColumn<ExamRow, Integer> cMaxMarks = new TableColumn<>("Max Marks");
-        cMaxMarks.setCellValueFactory(new PropertyValueFactory<>("maxMarks")); cMaxMarks.setPrefWidth(90);
-        table.getColumns().addAll(cId, cYear, cTerm, cSeries, cMaxMarks);
+        table.getColumns().addAll(
+            UIUtils.<ExamRow>col("ID", "id", 60),
+            UIUtils.<ExamRow>col("Year", "year", 120),
+            UIUtils.<ExamRow>col("Term", "term", 120),
+            UIUtils.<ExamRow>col("Series", "series", 180),
+            UIUtils.<ExamRow>col("Max Marks", "maxMarks", 90)
+        );
         table.setPrefHeight(400);
 
         ObservableList<ExamRow> data = FXCollections.observableArrayList();
@@ -59,11 +52,11 @@ public class ExamForm {
                 String term = termBox.getValue();
                 String series = seriesField.getText().trim();
                 if (year.isEmpty() || term == null || series.isEmpty()) {
-                    showAlert("Year, Term, and Series are required.");
+                    UIUtils.showError("Year, Term, and Series are required.");
                     return;
                 }
                 if (!year.matches("\\d{4}")) {
-                    showAlert("Year must be a 4-digit number (e.g. 2026).");
+                    UIUtils.showError("Year must be a 4-digit number (e.g. 2026).");
                     return;
                 }
                 ps.setString(1, year);
@@ -72,7 +65,7 @@ public class ExamForm {
                 ps.executeUpdate();
                 load(data);
                 yearField.clear(); termBox.setValue(null); seriesField.clear();
-            } catch (Exception ex) { showAlert(ex.getMessage()); }
+            } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
         });
 
         view.getChildren().addAll(header, form, table);
@@ -92,12 +85,7 @@ public class ExamForm {
             while (rs.next())
                 data.add(new ExamRow(rs.getLong("id"), rs.getString("academic_year"),
                     rs.getString("term"), rs.getString("exam_series"), rs.getInt("max_marks")));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void showAlert(String msg) {
-        Alert a = new Alert(Alert.AlertType.ERROR, msg);
-        a.showAndWait();
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     public static class ExamRow {

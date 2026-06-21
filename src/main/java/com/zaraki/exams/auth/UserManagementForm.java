@@ -1,6 +1,7 @@
 package com.zaraki.exams.auth;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.UIUtils;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -29,12 +30,9 @@ public class UserManagementForm {
     public VBox getView() {
         VBox view = new VBox(15);
 
-        Label header = new Label("User Management");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("User Management");
 
         Label info = new Label("Create and manage system users. Passwords are hashed and cannot be retrieved.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         HBox toolbar = new HBox(10);
         Button addBtn = new Button("+ New User");
@@ -42,8 +40,7 @@ public class UserManagementForm {
         Button refreshBtn = new Button("Refresh");
         toolbar.getChildren().addAll(addBtn, refreshBtn);
 
-        statusLabel = new Label();
-        statusLabel.setTextFill(Color.gray(0.5));
+        statusLabel = UIUtils.makeStatusLabel();
 
         table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
@@ -106,7 +103,7 @@ public class UserManagementForm {
             while (rs.next())
                 data.add(new UserRow(rs.getLong("id"), rs.getString("username"),
                     rs.getString("full_name"), rs.getString("role")));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void showUserDialog(UserRow existing, boolean isNew) {
@@ -165,15 +162,15 @@ public class UserManagementForm {
             String role = roleBox.getValue();
 
             if (username.isEmpty() || fullName.isEmpty() || role == null) {
-                showAlert("Username, full name, and role are required.");
+                UIUtils.showError("Username, full name, and role are required.");
                 return null;
             }
             if (isNew && password.isEmpty()) {
-                showAlert("Password is required for new users.");
+                UIUtils.showError("Password is required for new users.");
                 return null;
             }
             if (!password.isEmpty() && !password.equals(confirm)) {
-                showAlert("Passwords do not match.");
+                UIUtils.showError("Passwords do not match.");
                 return null;
             }
 
@@ -217,7 +214,7 @@ public class UserManagementForm {
                 }
                 load();
                 statusLabel.setText("User saved: " + username);
-            } catch (SQLException e) { showAlert(e.getMessage()); }
+            } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
             return null;
         });
 
@@ -232,11 +229,11 @@ public class UserManagementForm {
                  ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users WHERE role='admin'")) {
                 if (rs.next()) adminCount = rs.getLong(1);
             } catch (SQLException e) {
-                showAlert("Failed to check admin count: " + e.getMessage());
+                UIUtils.showError("Failed to check admin count: " + e.getMessage());
                 return;
             }
             if (adminCount <= 1) {
-                showAlert("Cannot delete the last admin user.");
+                UIUtils.showError("Cannot delete the last admin user.");
                 return;
             }
         }
@@ -251,11 +248,7 @@ public class UserManagementForm {
             ps.executeUpdate();
             load();
             statusLabel.setText("User deleted: " + row.getUsername());
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.WARNING, msg).showAndWait());
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     public static class UserRow {

@@ -3,16 +3,13 @@ package com.zaraki.exams.forms;
 import com.zaraki.exams.config.CurriculumSystem;
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
-import javafx.application.Platform;
+import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 
 import java.sql.*;
 
@@ -34,14 +31,12 @@ public class GradingScaleForm {
 
     public VBox getView() {
         VBox view = new VBox(15);
-        Label header = new Label("Grading Scales");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Grading Scales");
 
         CurriculumSystem curr = settings.getCurriculum();
         Label info = new Label("Active: " + curr.getDisplayName()
             + " | Leave Subject blank for global scale.");
-        info.setFont(Font.font("System", 14));
-        info.setTextFill(Color.gray(0.4));
+
 
         GridPane form = new GridPane();
         form.setHgap(10); form.setVgap(10);
@@ -53,7 +48,7 @@ public class GradingScaleForm {
              ResultSet rs = st.executeQuery("SELECT id, subject_name FROM subjects ORDER BY subject_name")) {
             while (rs.next())
                 subjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_name"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
 
         TextField minField = new TextField(); minField.setPromptText("Min");
         TextField maxField = new TextField(); maxField.setPromptText("Max");
@@ -102,7 +97,7 @@ public class GradingScaleForm {
                 String grade = gradeField.getText().trim();
                 String ptsText = pointsField.getText().trim();
                 if (minText.isEmpty() || maxText.isEmpty() || grade.isEmpty() || ptsText.isEmpty()) {
-                    showAlert("Min, Max, Grade, and Points are required.");
+                    UIUtils.showError("Min, Max, Grade, and Points are required.");
                     return;
                 }
                 double min, max;
@@ -112,9 +107,9 @@ public class GradingScaleForm {
                     max = Double.parseDouble(maxText);
                     pts = Integer.parseInt(ptsText);
                     if (min < 0 || max < 0 || pts < 0) throw new NumberFormatException();
-                    if (min >= max) { showAlert("Min must be less than Max."); return; }
+                    if (min >= max) { UIUtils.showError("Min must be less than Max."); return; }
                 } catch (NumberFormatException ex) {
-                    showAlert("Min and Max must be valid positive numbers; Points must be a valid positive integer.");
+                    UIUtils.showError("Min and Max must be valid positive numbers; Points must be a valid positive integer.");
                     return;
                 }
                 String subj = subjectBox.getValue();
@@ -128,7 +123,7 @@ public class GradingScaleForm {
                 ps.executeUpdate();
                 load();
                 minField.clear(); maxField.clear(); gradeField.clear(); pointsField.clear(); remarksField.clear();
-            } catch (Exception ex) { showAlert(ex.getMessage()); }
+            } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
         });
 
         autoBtn.setOnAction(e -> autoGenerate());
@@ -163,9 +158,9 @@ public class GradingScaleForm {
                 conn.setAutoCommit(true);
             }
             load();
-            showAlert("Auto-generated " + curr.getPresetGrades().size() + " global grading scales for " + curr.getDisplayName());
+            UIUtils.showError("Auto-generated " + curr.getPresetGrades().size() + " global grading scales for " + curr.getDisplayName());
         } catch (Exception e) {
-            showAlert("Error: " + e.getMessage());
+            UIUtils.showError("Error: " + e.getMessage());
         }
     }
 
@@ -190,15 +185,8 @@ public class GradingScaleForm {
                     rs.getDouble("maximum_mark"), rs.getString("grade"),
                     rs.getInt("points"), rs.getString("remarks")));
         } catch (SQLException e) {
-            showAlert(e.getMessage());
+            UIUtils.showError(e.getMessage());
         }
-    }
-
-    private void showAlert(String msg) {
-        Platform.runLater(() -> {
-            Alert a = new Alert(Alert.AlertType.INFORMATION, msg);
-            a.showAndWait();
-        });
     }
 
     public static class ScaleRow {

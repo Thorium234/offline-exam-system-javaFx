@@ -2,6 +2,7 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.service.ExcelService;
+import com.zaraki.exams.util.UIUtils;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.concurrent.Task;
@@ -9,7 +10,6 @@ import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
@@ -48,14 +48,11 @@ public class BulkMarksForm {
         VBox view = new VBox(15);
         view.setPadding(new Insets(10, 0, 10, 0));
 
-        Label header = new Label("Bulk Marks");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Bulk Marks");
 
         Label info = new Label(isTeacher
             ? "Select exam, subject, then stream to generate templates or upload filled sheets."
             : "Generate Excel templates per class, then upload the filled sheets to import marks.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         VBox section1 = sectionBox("1. Select Exam & Class");
         HBox examRow = new HBox(10);
@@ -114,9 +111,7 @@ public class BulkMarksForm {
         }
         section2.getChildren().add(btnRow);
 
-        statusLabel = new Label();
-        statusLabel.setFont(Font.font("System", 13));
-        statusLabel.setTextFill(Color.gray(0.4));
+        statusLabel = UIUtils.makeStatusLabel();
 
         logArea = new TextArea();
         logArea.setEditable(false);
@@ -184,7 +179,7 @@ public class BulkMarksForm {
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
             File file = fc.showOpenDialog(stage);
             if (file == null) return;
-            if (file.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
+            if (file.length() > 10_485_760) { UIUtils.showError("File too large. Maximum size is 10 MB."); return; }
 
             long examId = parseExamId();
             int form = formBox.getValue();
@@ -224,7 +219,7 @@ public class BulkMarksForm {
         });
 
         generateAllBtn.setOnAction(e -> {
-            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+            if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
             long examId = parseExamId();
             FileChooser fc = new FileChooser();
             fc.setTitle("Save All Templates as One Excel File");
@@ -259,7 +254,7 @@ public class BulkMarksForm {
         });
 
         uploadAllBtn.setOnAction(e -> {
-            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+            if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
             long examId = parseExamId();
             int form = formBox.getValue();
             String stream = streamBox.getValue();
@@ -268,7 +263,7 @@ public class BulkMarksForm {
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
             File file = fc.showOpenDialog(stage);
             if (file == null) return;
-            if (file.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
+            if (file.length() > 10_485_760) { UIUtils.showError("File too large. Maximum size is 10 MB."); return; }
 
             spinner.setVisible(true);
             statusLabel.setText("Processing multi-sheet upload...");
@@ -335,7 +330,7 @@ public class BulkMarksForm {
             ResultSet rs = ps.executeQuery();
             while (rs.next())
                 subjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_code") + " - " + rs.getString("subject_name"));
-        } catch (SQLException ex) { showAlert("Failed to load subjects: " + ex.getMessage()); }
+        } catch (SQLException ex) { UIUtils.showError("Failed to load subjects: " + ex.getMessage()); }
     }
 
     private void loadTeacherForms() {
@@ -351,7 +346,7 @@ public class BulkMarksForm {
             ps.setLong(2, subjectId);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) forms.add(rs.getInt("form"));
-        } catch (SQLException ex) { showAlert("Failed to load forms: " + ex.getMessage()); }
+        } catch (SQLException ex) { UIUtils.showError("Failed to load forms: " + ex.getMessage()); }
         formBox.setItems(FXCollections.observableArrayList(forms));
     }
 
@@ -369,7 +364,7 @@ public class BulkMarksForm {
             ps.setInt(3, form);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) streams.add(rs.getString("stream"));
-        } catch (SQLException ex) { showAlert("Failed to load streams: " + ex.getMessage()); }
+        } catch (SQLException ex) { UIUtils.showError("Failed to load streams: " + ex.getMessage()); }
 
         if (streams.size() == 1) {
             streamBox.setItems(FXCollections.observableArrayList(streams));
@@ -393,11 +388,11 @@ public class BulkMarksForm {
     }
 
     private boolean validateSelection() {
-        if (examBox.getValue() == null) { showAlert("Select an exam."); return false; }
-        if (isTeacher && (subjectBox.getValue() == null)) { showAlert("Select a subject."); return false; }
-        if (formBox.getValue() == null) { showAlert("Select a form."); return false; }
+        if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return false; }
+        if (isTeacher && (subjectBox.getValue() == null)) { UIUtils.showError("Select a subject."); return false; }
+        if (formBox.getValue() == null) { UIUtils.showError("Select a form."); return false; }
         if (streamBox.getValue() == null || streamBox.getValue().isBlank()) {
-            showAlert("Select or type a stream."); return false;
+            UIUtils.showError("Select or type a stream."); return false;
         }
         return true;
     }
@@ -413,7 +408,7 @@ public class BulkMarksForm {
             while (rs.next())
                 examBox.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
                     + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void loadStreams() {
@@ -422,7 +417,7 @@ public class BulkMarksForm {
              Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
             while (rs.next()) streams.add(rs.getString("stream"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
         streamBox.setItems(FXCollections.observableArrayList(streams));
     }
 
@@ -439,7 +434,5 @@ public class BulkMarksForm {
         Platform.runLater(() -> logArea.appendText(msg + "\n"));
     }
 
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
-    }
+
 }

@@ -1,14 +1,13 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import javafx.application.Platform;
+import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
@@ -37,12 +36,9 @@ public class TeacherAssignmentForm {
         VBox view = new VBox(15);
         view.setPadding(new Insets(20));
 
-        Label header = new Label("Teacher Subject Assignment");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Teacher Subject Assignment");
 
         Label info = new Label("Assign subjects + form/stream combinations to teachers. This controls what subjects each teacher sees in Publish.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         HBox teacherRow = new HBox(10);
         teacherRow.getChildren().addAll(new Label("Teacher:"), teacherBox);
@@ -97,8 +93,7 @@ public class TeacherAssignmentForm {
         addBtn.setOnAction(e -> addAssignment());
         addRow.getChildren().addAll(addSubjectBox, addFormBox, addStreamBox, addBtn);
 
-        statusLabel.setFont(Font.font("System", 12));
-        statusLabel.setTextFill(Color.gray(0.5));
+
 
         view.getChildren().addAll(header, info, teacherRow, assignTable, addLabel, addRow, statusLabel);
         return view;
@@ -110,7 +105,7 @@ public class TeacherAssignmentForm {
              ResultSet rs = st.executeQuery("SELECT id, username, full_name FROM users WHERE role = 'teacher' ORDER BY full_name")) {
             while (rs.next())
                 teacherBox.getItems().add(rs.getLong("id") + ":" + rs.getString("username") + " | " + rs.getString("full_name"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void loadAssignments() {
@@ -133,15 +128,15 @@ public class TeacherAssignmentForm {
                 assignData.add(new AssignmentRow(rs.getLong("id"), rs.getString("subject_name"),
                     rs.getInt("form"), rs.getString("stream")));
             statusLabel.setText(assignData.size() + " assignment(s)");
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void addAssignment() {
-        if (selectedUserId == 0) { showAlert("Select a teacher first."); return; }
-        if (addSubjectBox.getValue() == null) { showAlert("Select a subject."); return; }
-        if (addFormBox.getValue() == null) { showAlert("Select a form."); return; }
+        if (selectedUserId == 0) { UIUtils.showError("Select a teacher first."); return; }
+        if (addSubjectBox.getValue() == null) { UIUtils.showError("Select a subject."); return; }
+        if (addFormBox.getValue() == null) { UIUtils.showError("Select a form."); return; }
         String stream = addStreamBox.getValue();
-        if (stream == null || stream.isBlank()) { showAlert("Select a stream."); return; }
+        if (stream == null || stream.isBlank()) { UIUtils.showError("Select a stream."); return; }
 
         long subjectId = Long.parseLong(addSubjectBox.getValue().split(":")[0]);
 
@@ -158,9 +153,9 @@ public class TeacherAssignmentForm {
                 addFormBox.setValue(null);
                 addStreamBox.setValue(null);
             } else {
-                showAlert("Assignment already exists.");
+                UIUtils.showError("Assignment already exists.");
             }
-        } catch (SQLException e) { showAlert("Failed to add: " + e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError("Failed to add: " + e.getMessage()); }
     }
 
     private void removeAssignment(AssignmentRow row) {
@@ -169,7 +164,7 @@ public class TeacherAssignmentForm {
             ps.setLong(1, row.id);
             ps.executeUpdate();
             loadAssignments();
-        } catch (SQLException e) { showAlert("Failed to remove: " + e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError("Failed to remove: " + e.getMessage()); }
     }
 
     private void loadSubjects() {
@@ -178,7 +173,7 @@ public class TeacherAssignmentForm {
              ResultSet rs = st.executeQuery("SELECT id, subject_name FROM subjects ORDER BY subject_name")) {
             while (rs.next())
                 addSubjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_name"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void loadStreams() {
@@ -187,13 +182,11 @@ public class TeacherAssignmentForm {
              Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
             while (rs.next()) streams.add(rs.getString("stream"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
         addStreamBox.setItems(FXCollections.observableArrayList(streams));
     }
 
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait());
-    }
+
 
     public static class AssignmentRow {
         private final long id;

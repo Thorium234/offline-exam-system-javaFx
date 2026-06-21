@@ -1,6 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.UIUtils;
+import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -10,10 +12,6 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +20,7 @@ import java.util.stream.Collectors;
 
 public class RecycleBinForm {
 
-    private static final String PRIMARY = "#1a237e";
+
 
     private final DatabaseEngine db;
     private final Runnable onBackToDashboard;
@@ -51,12 +49,9 @@ public class RecycleBinForm {
             + "-fx-font-size: 13; -fx-padding: 5 0 5 0;");
         backBtn.setOnAction(e -> onBackToDashboard.run());
 
-        Label header = new Label("Recycle Bin");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Recycle Bin");
 
         Label sub = new Label("These students have been deallocated. Restore them or permanently delete them.");
-        sub.setFont(Font.font("System", 14));
-        sub.setTextFill(Color.gray(0.5));
 
         HBox actions = new HBox(10);
         Button restoreBtn = new Button("Restore Selected");
@@ -65,9 +60,7 @@ public class RecycleBinForm {
         deleteBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
         Button selectAllBtn = new Button("Select All");
         Button deselectBtn = new Button("Deselect All");
-        Label statusLabel = new Label();
-        statusLabel.setFont(Font.font("System", 12));
-        statusLabel.setTextFill(Color.gray(0.5));
+        Label statusLabel = UIUtils.makeStatusLabel();
         actions.getChildren().addAll(restoreBtn, deleteBtn, selectAllBtn, deselectBtn, statusLabel);
 
         ProgressIndicator spinner = new ProgressIndicator();
@@ -133,7 +126,7 @@ public class RecycleBinForm {
         };
         loadTask.setOnFailed(ev -> {
             spinner.setVisible(false);
-            showAlert("Failed to load: " + loadTask.getException().getMessage());
+            UIUtils.showError("Failed to load: " + loadTask.getException().getMessage());
         });
         new Thread(loadTask).start();
 
@@ -151,7 +144,7 @@ public class RecycleBinForm {
 
         restoreBtn.setOnAction(e -> {
             List<RecycleRow> selected = data.stream().filter(RecycleRow::isSelected).collect(Collectors.toList());
-            if (selected.isEmpty()) { showAlert("No students selected."); return; }
+            if (selected.isEmpty()) { UIUtils.showError("No students selected."); return; }
             Set<Long> ids = selected.stream().map(r -> r.id).collect(Collectors.toSet());
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
@@ -171,15 +164,15 @@ public class RecycleBinForm {
                 data.removeIf(r -> ids.contains(r.id));
                 table.setItems(data);
                 updateStatus(statusLabel, table);
-                showInfo("Restored " + selected.size() + " student(s).");
+                UIUtils.showInfo("Restored " + selected.size() + " student(s).");
             });
-            task.setOnFailed(ev2 -> showAlert("Error: " + task.getException().getMessage()));
+            task.setOnFailed(ev2 -> UIUtils.showError("Error: " + task.getException().getMessage()));
             new Thread(task).start();
         });
 
         deleteBtn.setOnAction(e -> {
             List<RecycleRow> selected = data.stream().filter(RecycleRow::isSelected).collect(Collectors.toList());
-            if (selected.isEmpty()) { showAlert("No students selected."); return; }
+            if (selected.isEmpty()) { UIUtils.showError("No students selected."); return; }
             Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                 "Permanently delete " + selected.size() + " student(s)?\n"
                 + "This will also delete all their marks and cannot be undone!",
@@ -205,9 +198,9 @@ public class RecycleBinForm {
                 data.removeIf(r -> ids.contains(r.id));
                 table.setItems(data);
                 updateStatus(statusLabel, table);
-                showInfo("Permanently deleted " + selected.size() + " student(s).");
+                UIUtils.showInfo("Permanently deleted " + selected.size() + " student(s).");
             });
-            task.setOnFailed(ev2 -> showAlert("Error: " + task.getException().getMessage()));
+            task.setOnFailed(ev2 -> UIUtils.showError("Error: " + task.getException().getMessage()));
             new Thread(task).start();
         });
 
@@ -274,11 +267,5 @@ public class RecycleBinForm {
         }
     }
 
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
-    }
 
-    private void showInfo(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait());
-    }
 }

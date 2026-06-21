@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.config.SettingsManager;
+import com.zaraki.exams.util.UIUtils;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
@@ -30,12 +31,9 @@ public class SchoolSettingsForm {
         VBox view = new VBox(20);
         view.setPadding(new Insets(20));
 
-        Label header = new Label("School Settings");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("School Settings");
 
         Label info = new Label("Customise school information for report cards.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         // ── School Name ──
         Label nameLabel = new Label("School Name");
@@ -136,9 +134,7 @@ public class SchoolSettingsForm {
         saveBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;");
         saveBtn.setPrefWidth(200);
 
-        statusLabel = new Label();
-        statusLabel.setFont(Font.font("System", 13));
-        statusLabel.setTextFill(Color.gray(0.5));
+        statusLabel = UIUtils.makeStatusLabel();
 
         // ── Events ──
         logoBrowseBtn.setOnAction(e -> {
@@ -149,17 +145,17 @@ public class SchoolSettingsForm {
             if (f != null) {
                 try {
                     int dotIdx = f.getName().lastIndexOf('.');
-                    if (dotIdx < 0) { showAlert("File has no extension."); return; }
+                    if (dotIdx < 0) { UIUtils.showError("File has no extension."); return; }
                     String ext = f.getName().substring(dotIdx);
                     if (!ext.matches("\\.(png|jpg|jpeg|gif)")) {
-                        showAlert("Invalid image format: " + ext);
+                        UIUtils.showError("Invalid image format: " + ext);
                         return;
                     }
                     File dest = new File(System.getProperty("user.dir"), "school_logo" + ext);
                     Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     logoPathField.setText(dest.getAbsolutePath());
                     logoPreview.setImage(new Image(dest.toURI().toString()));
-                } catch (Exception ex) { showAlert("Failed to copy logo: " + ex.getMessage()); }
+                } catch (Exception ex) { UIUtils.showError("Failed to copy logo: " + ex.getMessage()); }
             }
         });
         logoClearBtn.setOnAction(e -> { logoPathField.setText(""); logoPreview.setImage(null); });
@@ -172,17 +168,17 @@ public class SchoolSettingsForm {
             if (f != null) {
                 try {
                     int dotIdx = f.getName().lastIndexOf('.');
-                    if (dotIdx < 0) { showAlert("File has no extension."); return; }
+                    if (dotIdx < 0) { UIUtils.showError("File has no extension."); return; }
                     String ext = f.getName().substring(dotIdx);
                     if (!ext.matches("\\.(png|jpg|jpeg|gif)")) {
-                        showAlert("Invalid image format: " + ext);
+                        UIUtils.showError("Invalid image format: " + ext);
                         return;
                     }
                     File dest = new File(System.getProperty("user.dir"), "school_stamp" + ext);
                     Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     stampPathField.setText(dest.getAbsolutePath());
                     stampPreview.setImage(new Image(dest.toURI().toString()));
-                } catch (Exception ex) { showAlert("Failed to copy stamp: " + ex.getMessage()); }
+                } catch (Exception ex) { UIUtils.showError("Failed to copy stamp: " + ex.getMessage()); }
             }
         });
         stampClearBtn.setOnAction(e -> { stampPathField.setText(""); stampPreview.setImage(null); });
@@ -215,9 +211,5 @@ public class SchoolSettingsForm {
 
         view.getChildren().addAll(header, info, fields, saveBtn, statusLabel);
         return view;
-    }
-
-    private void showAlert(String msg) {
-        javafx.application.Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
     }
 }

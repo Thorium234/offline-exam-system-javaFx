@@ -2,7 +2,7 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.service.ExamAnalysisService;
-import javafx.application.Platform;
+import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -77,12 +77,9 @@ public class PublishForm {
         VBox root = new VBox(15);
         root.setPadding(new Insets(20));
 
-        Label header = new Label("Publish Management");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Publish Management");
 
         Label info = new Label("Upload marks per subject, publish each subject, then release the exam for report generation.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         HBox examRow = new HBox(10);
         examRow.getChildren().addAll(new Label("Exam:"), examBox);
@@ -129,7 +126,7 @@ public class PublishForm {
                 ps.setLong(2, currentExamId);
                 ps.setLong(3, row.subjectId);
                 ps.executeUpdate();
-            } catch (SQLException ex) { showAlert("Failed to update out_of: " + ex.getMessage()); }
+            } catch (SQLException ex) { UIUtils.showError("Failed to update out_of: " + ex.getMessage()); }
         });
         colOutOf.setPrefWidth(70);
 
@@ -216,11 +213,11 @@ public class PublishForm {
             while (rs.next())
                 examBox.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
                     + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void loadSubjectStatus() {
-        if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+        if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
         currentExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
         uploadArea.setVisible(false);
         subjectData.clear();
@@ -230,7 +227,7 @@ public class PublishForm {
         try (PreparedStatement ps = db.getConnection().prepareStatement(ensureSql)) {
             ps.setLong(1, currentExamId);
             ps.executeUpdate();
-        } catch (SQLException e) { showAlert(e.getMessage()); return; }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); return; }
 
         StringBuilder sql = new StringBuilder("""
             SELECT s.id, s.subject_name, s.subject_code,
@@ -272,7 +269,7 @@ public class PublishForm {
             String released = isExamReleased(currentExamId) ? " (RELEASED)" : "";
             statusLabel.setText("Exam: " + examBox.getValue() + released + " | " + num + " subjects");
             subjectTableArea.setVisible(true);
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     // ─── Upload View ─────────────────────────────────────────
@@ -325,9 +322,9 @@ public class PublishForm {
                 mr.dirty = true;
                 uploadTable.refresh();
             } else if (v != null && !Double.isFinite(v)) {
-                showAlert("Invalid score value.");
+                UIUtils.showError("Invalid score value.");
             } else if (v != null) {
-                showAlert("Score must be between 0 and " + currentOutOf + ".");
+                UIUtils.showError("Score must be between 0 and " + currentOutOf + ".");
             }
         });
         cScore.setPrefWidth(100);
@@ -373,7 +370,7 @@ public class PublishForm {
                     rs.getString("full_name"), score, rs.getString("grade_achieved"),
                     rs.getObject("points_achieved") != null ? rs.getInt("points_achieved") : null, false));
             }
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
         uploadTable.setItems(rows);
         uploadStatus.setText(rows.size() + " students");
     }
@@ -421,12 +418,12 @@ public class PublishForm {
                 loadUploadStudents();
             } catch (SQLException e) {
                 conn.rollback();
-                showAlert("Failed to save: " + e.getMessage());
+                UIUtils.showError("Failed to save: " + e.getMessage());
             } finally {
                 conn.setAutoCommit(true);
             }
         } catch (SQLException e) {
-            showAlert("DB error: " + e.getMessage());
+            UIUtils.showError("DB error: " + e.getMessage());
         }
     }
 
@@ -446,9 +443,9 @@ public class PublishForm {
             sheet.autoSizeColumn(0);
             sheet.autoSizeColumn(1);
             try (FileOutputStream fos = new FileOutputStream(f)) { wb.write(fos); }
-            showAlert("Template saved.");
+            UIUtils.showError("Template saved.");
         } catch (Exception e) {
-            showAlert("Failed to save template: " + e.getMessage());
+            UIUtils.showError("Failed to save template: " + e.getMessage());
         }
     }
 
@@ -458,7 +455,7 @@ public class PublishForm {
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel", "*.xlsx", "*.xls"));
         File f = fc.showOpenDialog(null);
         if (f == null) return;
-        if (f.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
+        if (f.length() > 10_485_760) { UIUtils.showError("File too large. Maximum size is 10 MB."); return; }
 
         List<String> errors = new ArrayList<>();
         int imported = 0;
@@ -532,11 +529,11 @@ public class PublishForm {
                 if (!errors.isEmpty()) {
                     StringBuilder sb = new StringBuilder("Errors:\n");
                     errors.stream().limit(10).forEach(e -> sb.append(e).append("\n"));
-                    showAlert(sb.toString());
+                    UIUtils.showError(sb.toString());
                 }
             }
         } catch (Exception e) {
-            showAlert("Excel import failed: " + e.getMessage());
+            UIUtils.showError("Excel import failed: " + e.getMessage());
         }
     }
 
@@ -544,7 +541,7 @@ public class PublishForm {
 
     private void publishSubject(SubjectRow row) {
         if (!role.equals("teacher") && !role.equals("admin")) {
-            showAlert("Only teachers and admins can publish subjects.");
+            UIUtils.showError("Only teachers and admins can publish subjects.");
             return;
         }
         try (PreparedStatement ps = db.getConnection().prepareStatement(
@@ -555,17 +552,17 @@ public class PublishForm {
             ps.setLong(4, row.subjectId);
             int updated = ps.executeUpdate();
             if (updated > 0) {
-                showAlert("Subject \"" + row.subjectName + "\" published.");
+                UIUtils.showError("Subject \"" + row.subjectName + "\" published.");
                 loadSubjectStatus();
             }
         } catch (SQLException e) {
-            showAlert("Failed to publish: " + e.getMessage());
+            UIUtils.showError("Failed to publish: " + e.getMessage());
         }
     }
 
     private void releaseExam() {
         if (!role.equals("admin")) {
-            showAlert("Only administrators can release an exam.");
+            UIUtils.showError("Only administrators can release an exam.");
             return;
         }
         // Check all subjects published
@@ -574,10 +571,10 @@ public class PublishForm {
             ps.setLong(1, currentExamId);
             ResultSet rs = ps.executeQuery();
             if (rs.next() && rs.getInt(1) > 0) {
-                showAlert("All subjects must be published before releasing the exam. " + rs.getInt(1) + " subject(s) not yet published.");
+                UIUtils.showError("All subjects must be published before releasing the exam. " + rs.getInt(1) + " subject(s) not yet published.");
                 return;
             }
-        } catch (SQLException e) { showAlert(e.getMessage()); return; }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); return; }
 
         try (PreparedStatement ps = db.getConnection().prepareStatement(
                 "UPDATE exams SET released = 1, released_by = ?, released_at = ? WHERE id = ?")) {
@@ -585,10 +582,10 @@ public class PublishForm {
             ps.setString(2, LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
             ps.setLong(3, currentExamId);
             ps.executeUpdate();
-            showAlert("Exam released. Reports can now be generated.");
+            UIUtils.showError("Exam released. Reports can now be generated.");
             loadSubjectStatus();
         } catch (SQLException e) {
-            showAlert("Failed to release: " + e.getMessage());
+            UIUtils.showError("Failed to release: " + e.getMessage());
         }
     }
 
@@ -609,7 +606,7 @@ public class PublishForm {
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel", "*.xlsx", "*.xls"));
         File f = fc.showOpenDialog(null);
         if (f == null) return;
-        if (f.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
+        if (f.length() > 10_485_760) { UIUtils.showError("File too large. Maximum size is 10 MB."); return; }
 
         long examId = currentExamId;
         List<String> errors = new ArrayList<>();
@@ -738,10 +735,10 @@ public class PublishForm {
 
             String msg = "Imported " + totalImported + " marks from " + totalRows + " rows across " + wb.getNumberOfSheets() + " sheets";
             if (!errors.isEmpty()) msg += " (" + errors.size() + " errors)";
-            showAlert(msg);
+            UIUtils.showError(msg);
             loadSubjectStatus();
         } catch (Exception e) {
-            showAlert("Multi-sheet upload failed: " + e.getMessage());
+            UIUtils.showError("Multi-sheet upload failed: " + e.getMessage());
         }
     }
 
@@ -755,9 +752,9 @@ public class PublishForm {
              ResultSet rs = st.executeQuery("SELECT id, username, full_name FROM users WHERE role = 'teacher' ORDER BY full_name")) {
             while (rs.next())
                 teacherSelector.getItems().add(rs.getLong("id") + ":" + rs.getString("username") + " | " + rs.getString("full_name"));
-        } catch (SQLException e) { showAlert(e.getMessage()); return; }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); return; }
 
-        if (teacherSelector.getItems().isEmpty()) { showAlert("No teachers found."); return; }
+        if (teacherSelector.getItems().isEmpty()) { UIUtils.showError("No teachers found."); return; }
         teacherSelector.setPrefWidth(300);
 
         Dialog<String> dialog = new Dialog<>();
@@ -820,13 +817,13 @@ public class PublishForm {
                     sheet.autoSizeColumn(1);
                     sheet.autoSizeColumn(2);
                 }
-                if (!hasSheets) { showAlert("This teacher has no subject assignments."); return; }
+                if (!hasSheets) { UIUtils.showError("This teacher has no subject assignments."); return; }
             }
 
             try (FileOutputStream fos = new FileOutputStream(f)) { wb.write(fos); }
-            showAlert("Template saved for " + teacherLabel + " with " + wb.getNumberOfSheets() + " subject sheets.");
+            UIUtils.showError("Template saved for " + teacherLabel + " with " + wb.getNumberOfSheets() + " subject sheets.");
         } catch (Exception e) {
-            showAlert("Failed to generate template: " + e.getMessage());
+            UIUtils.showError("Failed to generate template: " + e.getMessage());
         }
     }
 
@@ -842,9 +839,7 @@ public class PublishForm {
         };
     }
 
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait());
-    }
+
 
     // ─── Data Classes ────────────────────────────────────────
 

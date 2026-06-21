@@ -2,9 +2,9 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.reporting.ReportCardGenerator;
 import com.zaraki.exams.service.ExamAnalysisService;
+import com.zaraki.exams.util.UIUtils;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
@@ -52,16 +52,13 @@ public class ReportForm {
 
     public VBox getView() {
         VBox view = new VBox(15);
-        Label header = new Label("Reports — Report Cards");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Reports — Report Cards");
 
         Label info = new Label("Generate report cards. Each student on a separate A4 page.");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
-        loadExams(examBox);
-        loadStreams(streamBox);
-        loadForms(formBox);
+        UIUtils.loadExams(examBox);
+        UIUtils.loadStreams(streamBox);
+        UIUtils.loadForms(formBox);
 
         // ── Exam ──
         HBox examRow = new HBox(10, new Label("Exam:"), examBox);
@@ -95,9 +92,7 @@ public class ReportForm {
         spinner.setVisible(false);
         spinner.setPrefSize(24, 24);
 
-        statusLabel = new Label();
-        statusLabel.setFont(Font.font("System", 13));
-        statusLabel.setTextFill(Color.gray(0.4));
+        statusLabel = UIUtils.makeStatusLabel();
 
         // Preview
         previewBox = new VBox(10);
@@ -122,10 +117,10 @@ public class ReportForm {
 
         // ── Generate single PDF ──
         genOneBtn.setOnAction(e -> {
-            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+            if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            if (!isExamReleased(examId)) { showAlert("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
-            if (!studentFound) { showAlert("Search and select a student first."); return; }
+            if (!isExamReleased(examId)) { UIUtils.showError("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
+            if (!studentFound) { UIUtils.showError("Search and select a student first."); return; }
 
             FileChooser fc = new FileChooser();
             fc.setTitle("Save Report Card");
@@ -142,8 +137,8 @@ public class ReportForm {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Saved: " + file.getName()); showInfo("Report saved."); });
-            task.setOnFailed(ev -> { spinner.setVisible(false); statusLabel.setText("Failed."); showAlert(task.getException().getMessage()); });
+            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Saved: " + file.getName()); UIUtils.showInfo("Report saved."); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); statusLabel.setText("Failed."); UIUtils.showError(task.getException().getMessage()); });
             new Thread(task).start();
         });
 
@@ -151,7 +146,7 @@ public class ReportForm {
         foundStudentLabel.setOnMouseClicked(e -> {
             if (!studentFound || examBox.getValue() == null) return;
             selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            if (!isExamReleased(selectedExamId)) { showAlert("Exam not released by admin. Preview unavailable."); return; }
+            if (!isExamReleased(selectedExamId)) { UIUtils.showError("Exam not released by admin. Preview unavailable."); return; }
             spinner.setVisible(true);
             statusLabel.setText("Loading preview...");
             Platform.runLater(() -> {
@@ -164,15 +159,15 @@ public class ReportForm {
 
         // ── Generate bulk PDF ──
         bulkGenBtn.setOnAction(e -> {
-            if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
+            if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            if (!isExamReleased(examId)) { showAlert("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
+            if (!isExamReleased(examId)) { UIUtils.showError("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
             String groupBy, groupValue;
             if (streamBox.getValue() != null && !streamBox.getValue().isBlank()) {
                 groupBy = "stream"; groupValue = streamBox.getValue();
             } else if (formBox.getValue() != null && !formBox.getValue().isBlank()) {
                 groupBy = "form"; groupValue = formBox.getValue();
-            } else { showAlert("Select a stream or form."); return; }
+            } else { UIUtils.showError("Select a stream or form."); return; }
             FileChooser fc = new FileChooser();
             fc.setTitle("Save Bulk Report Cards");
             fc.setInitialFileName("report_cards_" + groupBy + "_" + groupValue.replace("/", "_") + ".pdf");
@@ -188,8 +183,8 @@ public class ReportForm {
                     return null;
                 }
             };
-            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Saved: " + file.getName() + " (" + groupValue + ")"); showInfo("Bulk report saved."); });
-            task.setOnFailed(ev -> { spinner.setVisible(false); statusLabel.setText("Failed."); showAlert(task.getException().getMessage()); });
+            task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Saved: " + file.getName() + " (" + groupValue + ")"); UIUtils.showInfo("Bulk report saved."); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); statusLabel.setText("Failed."); UIUtils.showError(task.getException().getMessage()); });
             new Thread(task).start();
         });
 
@@ -198,7 +193,7 @@ public class ReportForm {
 
     private void searchStudent() {
         String q = searchField.getText().trim();
-        if (q.isEmpty()) { showAlert("Enter a name or admission number."); return; }
+        if (q.isEmpty()) { UIUtils.showError("Enter a name or admission number."); return; }
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                  "SELECT id, admission_number, full_name, form, stream FROM students WHERE deallocated = 0 AND (full_name LIKE ? OR admission_number LIKE ?) LIMIT 20")) {
@@ -238,7 +233,7 @@ public class ReportForm {
                 foundStudentId = id;
                 studentFound = true;
             }
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     // ─────────── Preview ───────────
@@ -278,7 +273,7 @@ public class ReportForm {
                 previewBox.getChildren().add(new Label("Student: " + sr.getString("admission_number") + " - " + sr.getString("full_name")));
                 previewBox.getChildren().add(new Label("Class: Form " + sr.getInt("form") + " - " + sr.getString("stream")));
             }
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
 
         previewBox.getChildren().add(new Separator());
 
@@ -328,7 +323,7 @@ public class ReportForm {
                 previewBox.getChildren().add(rowGrid);
                 row++;
             }
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
 
         previewBox.getChildren().add(new Separator());
 
@@ -346,7 +341,7 @@ public class ReportForm {
             ResultSet rs = ps.executeQuery();
             if (rs.next())
                 summary.getChildren().add(new Label("Total Marks: " + rs.getDouble("total_marks") + " | Total Points: " + rs.getInt("total_points") + " | Mean Points: " + rs.getDouble("mean_points")));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
 
         String trendSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m WHERE m.exam_id = ? AND m.student_id = ?";
         String prevSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m JOIN exams e ON e.id = m.exam_id WHERE m.student_id = ? AND e.academic_year = (SELECT academic_year FROM exams WHERE id = ?) AND e.id < ? ORDER BY e.id DESC LIMIT 1";
@@ -366,7 +361,7 @@ public class ReportForm {
             } else trend.setText("Trend: First exam - no previous data.");
             trend.setFont(Font.font("System", FontWeight.BOLD, 11));
             summary.getChildren().add(trend);
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
 
         previewBox.getChildren().add(summary);
 
@@ -400,38 +395,7 @@ public class ReportForm {
 
     // ─────────── Helpers ───────────
 
-    private void loadExams(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams ORDER BY id DESC")) {
-            while (rs.next())
-                box.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
-                    + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void loadStreams(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
-            while (rs.next()) box.getItems().add(rs.getString("stream"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void loadForms(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
-            while (rs.next()) box.getItems().add(rs.getString("form"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
-    }
-
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
-    }
-
     private static boolean isExamReleased(long examId) {
         return PublishForm.isExamReleased(examId);
     }
-    private void showInfo(String msg) { Platform.runLater(() -> new Alert(Alert.AlertType.INFORMATION, msg).showAndWait()); }
 }

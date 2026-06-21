@@ -3,7 +3,7 @@ package com.zaraki.exams.forms;
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.reporting.ReportCardGenerator;
 import com.zaraki.exams.service.ExcelService;
-import javafx.application.Platform;
+import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
@@ -13,7 +13,6 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
@@ -43,8 +42,7 @@ public class StudentForm {
     public VBox getView() {
         VBox view = new VBox(15);
 
-        Label header = new Label("Students");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = UIUtils.makeHeader("Students");
 
         Label info = new Label("Add students manually or use Excel template for bulk import.");
         info.setFont(Font.font("System", 13));
@@ -68,8 +66,7 @@ public class StudentForm {
         spinner.setPrefSize(20, 20);
         excelRow.getChildren().addAll(genBtn, uploadBtn, exportPdfBtn, exportExcelBtn, spinner);
 
-        statusLabel = new Label();
-        statusLabel.setTextFill(Color.gray(0.5));
+        statusLabel = UIUtils.makeStatusLabel();
 
         table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
@@ -134,7 +131,7 @@ public class StudentForm {
                 String formText = formField.getText().trim();
                 String stream = streamField.getText().trim();
                 if (adm.isEmpty() || name.isEmpty() || formText.isEmpty() || stream.isEmpty()) {
-                    showAlert("All fields are required.");
+                    UIUtils.showError("All fields are required.");
                     return;
                 }
                 int formNum;
@@ -142,7 +139,7 @@ public class StudentForm {
                     formNum = Integer.parseInt(formText);
                     if (formNum < 1 || formNum > 4) throw new NumberFormatException();
                 } catch (NumberFormatException ex) {
-                    showAlert("Form must be a number between 1 and 4.");
+                    UIUtils.showError("Form must be a number between 1 and 4.");
                     return;
                 }
                 ps.setString(1, adm);
@@ -152,7 +149,7 @@ public class StudentForm {
                 ps.executeUpdate();
                 load();
                 admField.clear(); nameField.clear(); formField.clear(); streamField.clear();
-            } catch (Exception ex) { showAlert(ex.getMessage()); }
+            } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
         });
 
         genBtn.setOnAction(e -> {
@@ -170,7 +167,7 @@ public class StudentForm {
                 }
             };
             task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Template saved to: " + file.getName()); });
-            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); UIUtils.showError(task.getException().getMessage()); });
             new Thread(task).start();
         });
 
@@ -180,7 +177,7 @@ public class StudentForm {
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
             File file = fc.showOpenDialog(stage);
             if (file == null) return;
-            if (file.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
+            if (file.length() > 10_485_760) { UIUtils.showError("File too large. Maximum size is 10 MB."); return; }
             spinner.setVisible(true);
             Task<ExcelService.StudentImportResult> task = new Task<>() {
                 @Override protected ExcelService.StudentImportResult call() {
@@ -193,7 +190,7 @@ public class StudentForm {
                 statusLabel.setText("Imported: " + r.inserted() + " new, " + r.updated() + " updated, " + r.errors() + " errors");
                 load();
             });
-            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); UIUtils.showError(task.getException().getMessage()); });
             new Thread(task).start();
         });
 
@@ -212,7 +209,7 @@ public class StudentForm {
                 }
             };
             task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("PDF saved: " + file.getName()); });
-            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); UIUtils.showError(task.getException().getMessage()); });
             new Thread(task).start();
         });
 
@@ -231,7 +228,7 @@ public class StudentForm {
                 }
             };
             task.setOnSucceeded(ev -> { spinner.setVisible(false); statusLabel.setText("Excel saved: " + file.getName()); });
-            task.setOnFailed(ev -> { spinner.setVisible(false); showAlert(task.getException().getMessage()); });
+            task.setOnFailed(ev -> { spinner.setVisible(false); UIUtils.showError(task.getException().getMessage()); });
             new Thread(task).start();
         });
 
@@ -247,7 +244,7 @@ public class StudentForm {
             while (rs.next())
                 data.add(new StudentRow(rs.getLong("id"), rs.getString("admission_number"),
                     rs.getString("full_name"), rs.getInt("form"), rs.getString("stream")));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void uploadPhoto(StudentRow row) {
@@ -257,7 +254,7 @@ public class StudentForm {
             new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
         File file = fc.showOpenDialog(stage);
         if (file == null) return;
-        if (file.length() > 2_097_152) { showAlert("Photo too large. Max 2 MB."); return; }
+        if (file.length() > 2_097_152) { UIUtils.showError("Photo too large. Max 2 MB."); return; }
         Task<Void> task = new Task<>() {
             @Override protected Void call() throws Exception {
                 byte[] bytes = Files.readAllBytes(file.toPath());
@@ -271,7 +268,7 @@ public class StudentForm {
             }
         };
         task.setOnSucceeded(ev -> statusLabel.setText("Photo saved for " + row.name));
-        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+        task.setOnFailed(ev -> UIUtils.showError(task.getException().getMessage()));
         new Thread(task).start();
     }
 
@@ -327,7 +324,7 @@ public class StudentForm {
                 return null;
             }
         };
-        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+        task.setOnFailed(ev -> UIUtils.showError(task.getException().getMessage()));
         new Thread(task).start();
         dialog.showAndWait();
     }
@@ -356,12 +353,8 @@ public class StudentForm {
             statusLabel.setText("Subjects saved for student");
             dialog.close();
         });
-        task.setOnFailed(ev -> showAlert(task.getException().getMessage()));
+        task.setOnFailed(ev -> UIUtils.showError(task.getException().getMessage()));
         new Thread(task).start();
-    }
-
-    private void showAlert(String msg) {
-        Platform.runLater(() -> new Alert(Alert.AlertType.ERROR, msg).showAndWait());
     }
 
     private record SubjectInfo(long id, String code, String name) {}

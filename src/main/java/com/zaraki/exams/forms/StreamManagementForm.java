@@ -1,6 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.UIUtils;
+import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -8,17 +10,12 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 
 import java.sql.*;
 import java.util.Set;
 import java.util.TreeSet;
 
 public class StreamManagementForm {
-
-    private static final String PRIMARY = "#1a237e";
 
     private final DatabaseEngine db;
     private final TableView<StreamRow> table = new TableView<>();
@@ -36,13 +33,9 @@ public class StreamManagementForm {
         VBox view = new VBox(15);
         view.setPadding(new Insets(20));
 
-        Label header = new Label("Stream Management");
-        header.setFont(Font.font("System", FontWeight.BOLD, 22));
-        header.setTextFill(Color.web(PRIMARY));
+        Label header = UIUtils.makeHeader("Stream Management");
 
         Label info = new Label("Add, edit, or remove streams (form–stream combinations).");
-        info.setFont(Font.font("System", 13));
-        info.setTextFill(Color.gray(0.5));
 
         HBox addRow = new HBox(10);
         formBox.setPromptText("Form");
@@ -80,9 +73,7 @@ public class StreamManagementForm {
         deleteBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
         deleteBtn.setDisable(true);
         Button refreshBtn = new Button("Refresh");
-        statusLabel = new Label();
-        statusLabel.setFont(Font.font("System", 12));
-        statusLabel.setTextFill(Color.gray(0.5));
+        statusLabel = UIUtils.makeStatusLabel();
         actionRow.getChildren().addAll(deleteBtn, refreshBtn, statusLabel);
 
         VBox fields = new VBox(12);
@@ -95,9 +86,9 @@ public class StreamManagementForm {
         loadData();
 
         addBtn.setOnAction(e -> {
-            if (formBox.getValue() == null) { showAlert("Select a form."); return; }
+            if (formBox.getValue() == null) { UIUtils.showError("Select a form."); return; }
             String stream = streamBox.getValue();
-            if (stream == null || stream.isBlank()) { showAlert("Enter a stream name."); return; }
+            if (stream == null || stream.isBlank()) { UIUtils.showError("Enter a stream name."); return; }
             try (Connection conn = db.getConnection();
                  PreparedStatement ps = conn.prepareStatement(
                      "INSERT OR IGNORE INTO streams (form, stream) VALUES (?, ?)")) {
@@ -108,11 +99,11 @@ public class StreamManagementForm {
                     loadData();
                     statusLabel.setText("Added Form " + formBox.getValue() + " " + stream.trim());
                 } else {
-                    showAlert("Stream already exists.");
+                    UIUtils.showError("Stream already exists.");
                 }
                 formBox.setValue(null);
                 streamBox.setValue(null);
-            } catch (SQLException ex) { showAlert("Error: " + ex.getMessage()); }
+            } catch (SQLException ex) { UIUtils.showError("Error: " + ex.getMessage()); }
         });
 
         deleteBtn.setOnAction(e -> {
@@ -136,7 +127,7 @@ public class StreamManagementForm {
                 delStream.executeUpdate();
                 loadData();
                 statusLabel.setText("Deleted " + sel.form + " " + sel.streamName);
-            } catch (SQLException ex) { showAlert("Error: " + ex.getMessage()); }
+            } catch (SQLException ex) { UIUtils.showError("Error: " + ex.getMessage()); }
         });
 
         refreshBtn.setOnAction(e -> loadData());
@@ -168,14 +159,9 @@ public class StreamManagementForm {
                     rs.getString("stream"),
                     rs.getInt("cnt")));
             }
-        } catch (SQLException e) { showAlert("Error: " + e.getMessage()); }
+        } catch (SQLException e) { UIUtils.showError("Error: " + e.getMessage()); }
         table.setItems(data);
         statusLabel.setText(data.size() + " stream(s)");
-    }
-
-    private void showAlert(String msg) {
-        javafx.application.Platform.runLater(() ->
-            new Alert(Alert.AlertType.ERROR, msg).showAndWait());
     }
 
     public static class StreamRow {
