@@ -12,6 +12,7 @@ public class Mark {
     private String status;
     private String teacherComment;
     private String teacherName;
+    private double deviation;
 
     public Mark() {}
 
@@ -48,6 +49,9 @@ public class Mark {
 
     public String getTeacherName() { return teacherName; }
     public void setTeacherName(String teacherName) { this.teacherName = teacherName; }
+
+    public double getDeviation() { return deviation; }
+    public void setDeviation(double deviation) { this.deviation = deviation; }
 
     @Override
     public boolean equals(Object o) {

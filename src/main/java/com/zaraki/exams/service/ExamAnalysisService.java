@@ -36,20 +36,6 @@ public class ExamAnalysisService {
                 sub.subject_name,
                 sub.department,
                 ROUND(AVG(m.score), 1) AS mean_score,
-                CASE
-                    WHEN AVG(m.score) >= 80 THEN 'A'
-                    WHEN AVG(m.score) >= 75 THEN 'A-'
-                    WHEN AVG(m.score) >= 70 THEN 'B+'
-                    WHEN AVG(m.score) >= 65 THEN 'B'
-                    WHEN AVG(m.score) >= 60 THEN 'B-'
-                    WHEN AVG(m.score) >= 55 THEN 'C+'
-                    WHEN AVG(m.score) >= 50 THEN 'C'
-                    WHEN AVG(m.score) >= 45 THEN 'C-'
-                    WHEN AVG(m.score) >= 40 THEN 'D+'
-                    WHEN AVG(m.score) >= 35 THEN 'D'
-                    WHEN AVG(m.score) >= 30 THEN 'D-'
-                    ELSE 'E'
-                END AS mean_grade,
                 ROUND(SQRT(SUM((m.score - sa.avg_score) * (m.score - sa.avg_score)) /
                     NULLIF(COUNT(m.score) - 1, 0)), 1) AS std_dev,
                 COUNT(m.score) AS candidates
@@ -73,12 +59,15 @@ public class ExamAnalysisService {
                 if (mean < prevMean) rank = list.size() + 1;
                 prevMean = mean;
                 double stdDev = rs.getDouble("std_dev");
+                long subjectId = rs.getLong("id");
+                String gp = determineGradeAndPoints(mean, subjectId, examId);
+                String meanGrade = gp.split("\\|")[0];
                 list.add(new SubjectMetrics(
-                    rs.getLong("id"),
+                    subjectId,
                     rs.getString("subject_name"),
                     rs.getString("department"),
                     mean,
-                    rs.getString("mean_grade"),
+                    meanGrade,
                     stdDev,
                     rank,
                     rs.getInt("candidates")
@@ -100,21 +89,7 @@ public class ExamAnalysisService {
                 s.stream,
                 ROUND(SUM(m.score), 1) AS total_marks,
                 COALESCE(SUM(m.points_achieved), 0) AS total_points,
-                ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points,
-                CASE
-                    WHEN AVG(m.points_achieved) >= 12 THEN 'A'
-                    WHEN AVG(m.points_achieved) >= 11 THEN 'A-'
-                    WHEN AVG(m.points_achieved) >= 10 THEN 'B+'
-                    WHEN AVG(m.points_achieved) >= 9  THEN 'B'
-                    WHEN AVG(m.points_achieved) >= 8  THEN 'B-'
-                    WHEN AVG(m.points_achieved) >= 7  THEN 'C+'
-                    WHEN AVG(m.points_achieved) >= 6  THEN 'C'
-                    WHEN AVG(m.points_achieved) >= 5  THEN 'C-'
-                    WHEN AVG(m.points_achieved) >= 4  THEN 'D+'
-                    WHEN AVG(m.points_achieved) >= 3  THEN 'D'
-                    WHEN AVG(m.points_achieved) >= 2  THEN 'D-'
-                    ELSE 'E'
-                END AS mean_grade
+                ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points
             FROM marks m
             JOIN students s ON s.id = m.student_id
             WHERE m.exam_id = ?
@@ -146,7 +121,7 @@ public class ExamAnalysisService {
                     rs.getDouble("total_marks"),
                     pts,
                     rs.getDouble("mean_points"),
-                    rs.getString("mean_grade"),
+                    meanPointsToGrade(rs.getDouble("mean_points")),
                     rank,
                     0,
                     total,
@@ -457,9 +432,15 @@ public class ExamAnalysisService {
         Map<Long, Map<Long, Integer>> points = new HashMap<>();
         List<Long> studentOrder = new ArrayList<>();
 
-        String dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + validCol + " = ? ORDER BY s.id, m.subject_id";
+        String dataSql;
+        if (validCol.isEmpty()) {
+            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? ORDER BY s.id, m.subject_id";
+        } else {
+            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + validCol + " = ? ORDER BY s.id, m.subject_id";
+        }
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(dataSql)) {
-            ps.setLong(1, examId); ps.setString(2, groupValue);
+            ps.setLong(1, examId);
+            if (!validCol.isEmpty()) ps.setString(2, groupValue);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 long sid = rs.getLong("id");
@@ -530,7 +511,7 @@ public class ExamAnalysisService {
             var studentPts = points.getOrDefault(rd.id, Collections.emptyMap());
             int subjCount = studentPts.size();
             double meanPts = subjCount > 0 ? Math.round((double) rd.totalPts / subjCount * 10.0) / 10.0 : 0;
-            String grade = meanPts >= 12 ? "A" : meanPts >= 11 ? "A-" : meanPts >= 10 ? "B+" : meanPts >= 9 ? "B" : meanPts >= 8 ? "B-" : meanPts >= 7 ? "C+" : meanPts >= 6 ? "C" : meanPts >= 5 ? "C-" : meanPts >= 4 ? "D+" : meanPts >= 3 ? "D" : meanPts >= 2 ? "D-" : "E";
+            String grade = meanPointsToGrade(meanPts);
 
             Map<Long, Double> deviations = new HashMap<>();
             for (var se : studentScores.entrySet()) {
@@ -604,19 +585,21 @@ public class ExamAnalysisService {
         } catch (SQLException e) { return 0; }
     }
 
+    public String meanPointsToGrade(double meanPoints) {
+        String sql = "SELECT grade FROM grading_scales WHERE subject_id IS NULL AND points <= ? ORDER BY points DESC LIMIT 1";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setDouble(1, meanPoints);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) return rs.getString("grade");
+            return "E";
+        } catch (SQLException e) {
+            return "E";
+        }
+    }
+
     public String computeMeanGradeFromPoints(double meanPoints) {
-        if (meanPoints >= 12) return "A";
-        if (meanPoints >= 11) return "A-";
-        if (meanPoints >= 10) return "B+";
-        if (meanPoints >= 9) return "B";
-        if (meanPoints >= 8) return "B-";
-        if (meanPoints >= 7) return "C+";
-        if (meanPoints >= 6) return "C";
-        if (meanPoints >= 5) return "C-";
-        if (meanPoints >= 4) return "D+";
-        if (meanPoints >= 3) return "D";
-        if (meanPoints >= 2) return "D-";
-        return "E";
+        return meanPointsToGrade(meanPoints);
     }
 
     public double computeDeviation(long studentId, long examId, long subjectId) {

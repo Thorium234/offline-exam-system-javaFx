@@ -254,7 +254,7 @@ public class ExcelService {
         }
     }
 
-    public ImportResult processSubjectUpload(Path inputPath, long examId, long subjectId) {
+    public ImportResult processSubjectUpload(Path inputPath, long examId, long subjectId, int form, String stream) {
         List<String> errors = new ArrayList<>();
         int marksInserted = 0;
         int totalRows = 0;
@@ -285,7 +285,7 @@ public class ExcelService {
 
                 Long studentId;
                 try {
-                    studentId = resolveStudent(adm, admissionToStudentId, row);
+                    studentId = resolveStudent(adm, admissionToStudentId, row, form, stream);
                 } catch (Exception e) {
                     errors.add("Row " + (r + 1) + " (" + adm + "): " + e.getMessage());
                     continue;
@@ -410,7 +410,7 @@ public class ExcelService {
         }
     }
 
-    public ImportResult processTeacherMultiSheetUpload(Path inputPath, long examId) {
+    public ImportResult processTeacherMultiSheetUpload(Path inputPath, long examId, int form, String stream) {
         List<String> errors = new ArrayList<>();
         int marksInserted = 0;
         int totalRows = 0;
@@ -454,7 +454,7 @@ public class ExcelService {
 
                     Long studentId;
                     try {
-                        studentId = resolveStudent(adm, admissionToStudentId, row);
+                    studentId = resolveStudent(adm, admissionToStudentId, row, form, stream);
                     } catch (Exception e) {
                         errors.add("Sheet '" + sheetName + "', Row " + (r + 1) + " (" + adm + "): " + e.getMessage());
                         continue;
@@ -538,7 +538,7 @@ public class ExcelService {
         return list;
     }
 
-    public ImportResult processUpload(Path inputPath, long examId) {
+    public ImportResult processUpload(Path inputPath, long examId, int form, String stream) {
         List<String> errors = new ArrayList<>();
         int marksInserted = 0;
         int totalRows = 0;
@@ -585,7 +585,7 @@ public class ExcelService {
 
                 Long studentId;
                 try {
-                    studentId = resolveStudent(adm, admissionToStudentId, row);
+                    studentId = resolveStudent(adm, admissionToStudentId, row, form, stream);
                 } catch (Exception e) {
                     errors.add("Row " + (r + 1) + " (" + adm + "): " + e.getMessage());
                     continue;
@@ -630,7 +630,7 @@ public class ExcelService {
         }
     }
 
-    private Long resolveStudent(String adm, Map<String, Long> admissionMap, Row row) {
+    private Long resolveStudent(String adm, Map<String, Long> admissionMap, Row row, int form, String stream) {
         Long id = admissionMap.get(adm.trim());
         if (id != null) return id;
         String name = getCellString(row.getCell(1));
@@ -640,8 +640,8 @@ public class ExcelService {
                      "INSERT OR IGNORE INTO students (admission_number, full_name, form, stream) VALUES (?, ?, ?, ?)")) {
                 ps.setString(1, adm.trim());
                 ps.setString(2, name.trim());
-                ps.setInt(3, 1);
-                ps.setString(4, "General");
+                ps.setInt(3, form);
+                ps.setString(4, stream);
                 ps.executeUpdate();
             } catch (SQLException e) {
                 throw new RuntimeException("Failed to auto-register student " + adm, e);
@@ -706,20 +706,6 @@ public class ExcelService {
     }
 
     private record SubjectInfo(long id, String name) {}
-
-    private List<SubjectInfo> getSubjects() {
-        List<SubjectInfo> list = new ArrayList<>();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, subject_name FROM subjects ORDER BY subject_name")) {
-            while (rs.next()) {
-                list.add(new SubjectInfo(rs.getLong("id"), rs.getString("subject_name")));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch subjects", e);
-        }
-        return list;
-    }
 
     private Map<String, Long> getSubjectNameToIdMap() {
         Map<String, Long> map = new HashMap<>();

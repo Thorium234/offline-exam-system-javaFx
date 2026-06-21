@@ -27,7 +27,7 @@ import java.util.*;
 
 public class DashboardForm {
 
-    private static final String PRIMARY = "#1a237e";
+    private static final String PRIMARY = AppTheme.PRIMARY;
 
     private final DatabaseEngine db;
     private final SettingsManager settings;
@@ -418,8 +418,8 @@ public class DashboardForm {
                                 Map<String, Double> avg2 = getStreamAverages(conn, eids[1]);
                                 String bestStream = "";
                                 double bestImprovement = -Double.MAX_VALUE;
-                                for (var entry : avg2.entrySet()) {
-                                    double prev = avg1.getOrDefault(entry.getKey(), 0.0);
+                                for (var entry : avg1.entrySet()) {
+                                    double prev = avg2.getOrDefault(entry.getKey(), 0.0);
                                     double diff = entry.getValue() - prev;
                                     if (diff > bestImprovement) {
                                         bestImprovement = diff;
@@ -616,6 +616,7 @@ public class DashboardForm {
     }
 
     private int count(String table) {
+        if (!table.matches("[a-zA-Z_]+")) return 0;
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM " + table)) {

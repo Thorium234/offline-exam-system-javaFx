@@ -143,8 +143,8 @@ public class GradingScaleForm {
              PreparedStatement del = conn.prepareStatement("DELETE FROM grading_scales WHERE subject_id IS NULL");
              PreparedStatement ins = conn.prepareStatement(
                  "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (NULL,?,?,?,?,?)")) {
-            del.executeUpdate();
             conn.setAutoCommit(false);
+            del.executeUpdate();
             try {
                 for (CurriculumSystem.PresetGrade pg : curr.getPresetGrades()) {
                     ins.setDouble(1, pg.min());

@@ -279,18 +279,16 @@ public class ReportCardGenerator {
     }
 
     private String meanPointsToGrade(double meanPoints) {
-        if (meanPoints >= 12) return "A";
-        if (meanPoints >= 11) return "A-";
-        if (meanPoints >= 10) return "B+";
-        if (meanPoints >= 9) return "B";
-        if (meanPoints >= 8) return "B-";
-        if (meanPoints >= 7) return "C+";
-        if (meanPoints >= 6) return "C";
-        if (meanPoints >= 5) return "C-";
-        if (meanPoints >= 4) return "D+";
-        if (meanPoints >= 3) return "D";
-        if (meanPoints >= 2) return "D-";
-        return "E";
+        String sql = "SELECT grade FROM grading_scales WHERE subject_id IS NULL AND points <= ? ORDER BY points DESC LIMIT 1";
+        try (Connection conn = DatabaseEngine.getInstance().getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setDouble(1, meanPoints);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) return rs.getString("grade");
+            return "E";
+        } catch (SQLException e) {
+            return "E";
+        }
     }
 
     private void addSummary(Document doc, long examId, long studentId) throws DocumentException {
@@ -710,7 +708,7 @@ public class ReportCardGenerator {
                 int subjCount = (int) student.scores().values().stream().filter(v -> v > 0).count();
                 if (subjCount == 0) subjCount = student.scores().size();
                 double meanPts = subjCount > 0 ? Math.round((double) student.totalPoints() / subjCount * 10.0) / 10.0 : 0;
-                String grade = meanPts >= 12 ? "A" : meanPts >= 11 ? "A-" : meanPts >= 10 ? "B+" : meanPts >= 9 ? "B" : meanPts >= 8 ? "B-" : meanPts >= 7 ? "C+" : meanPts >= 6 ? "C" : meanPts >= 5 ? "C-" : meanPts >= 4 ? "D+" : meanPts >= 3 ? "D" : meanPts >= 2 ? "D-" : "E";
+                String grade = meanPointsToGrade(meanPts);
 
                 table.addCell(new Phrase(overallDev != 0 ? String.valueOf(overallDev) : "0", rf));
                 table.addCell(new Phrase(String.valueOf(student.totalMarks()), rf));

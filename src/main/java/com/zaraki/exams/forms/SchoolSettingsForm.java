@@ -14,7 +14,6 @@ import javafx.stage.FileChooser;
 
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
@@ -65,7 +64,7 @@ public class SchoolSettingsForm {
         logoPreview.setFitHeight(80);
         logoPreview.setPreserveRatio(true);
         String curLogo = settings.getLogoPath();
-        if (curLogo != null && !curLogo.isBlank()) try { logoPreview.setImage(new Image(new FileInputStream(curLogo))); } catch (Exception ignored) {}
+        if (curLogo != null && !curLogo.isBlank()) try { logoPreview.setImage(new Image(new java.io.File(curLogo).toURI().toString())); } catch (Exception ignored) {}
         TextField logoPathField = new TextField(curLogo);
         logoPathField.setPrefWidth(300);
         logoPathField.setEditable(false);
@@ -82,7 +81,7 @@ public class SchoolSettingsForm {
         stampPreview.setFitHeight(60);
         stampPreview.setPreserveRatio(true);
         String curStamp = settings.getStampPath();
-        if (curStamp != null && !curStamp.isBlank()) try { stampPreview.setImage(new Image(new FileInputStream(curStamp))); } catch (Exception ignored) {}
+        if (curStamp != null && !curStamp.isBlank()) try { stampPreview.setImage(new Image(new java.io.File(curStamp).toURI().toString())); } catch (Exception ignored) {}
         TextField stampPathField = new TextField(curStamp);
         stampPathField.setPrefWidth(300);
         stampPathField.setEditable(false);
@@ -149,7 +148,9 @@ public class SchoolSettingsForm {
             File f = fc.showOpenDialog(null);
             if (f != null) {
                 try {
-                    String ext = f.getName().substring(f.getName().lastIndexOf('.'));
+                    int dotIdx = f.getName().lastIndexOf('.');
+                    if (dotIdx < 0) { showAlert("File has no extension."); return; }
+                    String ext = f.getName().substring(dotIdx);
                     if (!ext.matches("\\.(png|jpg|jpeg|gif)")) {
                         showAlert("Invalid image format: " + ext);
                         return;
@@ -157,7 +158,7 @@ public class SchoolSettingsForm {
                     File dest = new File(System.getProperty("user.dir"), "school_logo" + ext);
                     Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     logoPathField.setText(dest.getAbsolutePath());
-                    logoPreview.setImage(new Image(new FileInputStream(dest)));
+                    logoPreview.setImage(new Image(dest.toURI().toString()));
                 } catch (Exception ex) { showAlert("Failed to copy logo: " + ex.getMessage()); }
             }
         });
@@ -170,7 +171,9 @@ public class SchoolSettingsForm {
             File f = fc.showOpenDialog(null);
             if (f != null) {
                 try {
-                    String ext = f.getName().substring(f.getName().lastIndexOf('.'));
+                    int dotIdx = f.getName().lastIndexOf('.');
+                    if (dotIdx < 0) { showAlert("File has no extension."); return; }
+                    String ext = f.getName().substring(dotIdx);
                     if (!ext.matches("\\.(png|jpg|jpeg|gif)")) {
                         showAlert("Invalid image format: " + ext);
                         return;
@@ -178,7 +181,7 @@ public class SchoolSettingsForm {
                     File dest = new File(System.getProperty("user.dir"), "school_stamp" + ext);
                     Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     stampPathField.setText(dest.getAbsolutePath());
-                    stampPreview.setImage(new Image(new FileInputStream(dest)));
+                    stampPreview.setImage(new Image(dest.toURI().toString()));
                 } catch (Exception ex) { showAlert("Failed to copy stamp: " + ex.getMessage()); }
             }
         });

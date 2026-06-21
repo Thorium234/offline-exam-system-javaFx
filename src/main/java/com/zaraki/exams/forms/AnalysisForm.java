@@ -421,17 +421,10 @@ public class AnalysisForm {
             String groupBy = meritStreamRb.isSelected() ? "stream" : "form";
             String groupValue = meritGroupBox.getValue();
             mSpinner.setVisible(true);
-            Task<Void> task = new Task<>() {
-                @Override protected Void call() throws Exception {
-                    return null;
-                }
-            };
-            task.setOnSucceeded(ev -> {
+            Platform.runLater(() -> {
                 loadMeritTable(examId, groupBy, groupValue);
                 mSpinner.setVisible(false);
             });
-            task.setOnFailed(ev -> { showAlert(task.getException().getMessage()); mSpinner.setVisible(false); });
-            new Thread(task).start();
         });
 
         exportPdfBtn.setOnAction(e -> {
@@ -533,7 +526,7 @@ public class AnalysisForm {
     private void loadStreams(ComboBox<String> box) {
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM students WHERE stream IS NOT NULL ORDER BY stream")) {
+             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
             while (rs.next()) box.getItems().add(rs.getString("stream"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }
@@ -541,7 +534,7 @@ public class AnalysisForm {
     private void loadForms(ComboBox<String> box) {
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE form IS NOT NULL ORDER BY form")) {
+             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
             while (rs.next()) box.getItems().add(rs.getString("form"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }

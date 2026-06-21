@@ -117,8 +117,6 @@ public class LoginForm {
                     if (onLoginSuccess != null) onLoginSuccess.run();
                 } else {
                     LoggerUtil.warn("Login FAILED: invalid password for user: '" + username + "'");
-                    LoggerUtil.warn("Stored hash: " + hash);
-                    LoggerUtil.warn("Stored salt: " + salt);
                     errorLabel.setText("Invalid password.");
                 }
             } else {

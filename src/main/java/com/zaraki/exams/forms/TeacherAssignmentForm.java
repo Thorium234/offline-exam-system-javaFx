@@ -185,7 +185,7 @@ public class TeacherAssignmentForm {
         Set<String> streams = new TreeSet<>();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM students ORDER BY stream")) {
+             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
             while (rs.next()) streams.add(rs.getString("stream"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
         addStreamBox.setItems(FXCollections.observableArrayList(streams));

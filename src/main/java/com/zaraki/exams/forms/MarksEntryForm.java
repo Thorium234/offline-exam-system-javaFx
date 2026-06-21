@@ -270,7 +270,7 @@ public class MarksEntryForm {
         streamBox.getItems().clear();
         long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
         selectedSubjectId = subjectId;
-        selectedSubjectName = subjectBox.getValue().split(" - ")[1];
+        selectedSubjectName = subjectBox.getValue().split(" - ", 2)[1];
 
         Set<Integer> forms = new TreeSet<>();
         try (Connection conn = db.getConnection();
@@ -492,7 +492,6 @@ public class MarksEntryForm {
         if (examId == 0 || subjectId == 0) return;
 
         int saved = 0;
-        int errors = 0;
 
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -530,7 +529,6 @@ public class MarksEntryForm {
                 ps.executeBatch();
                 conn.commit();
                 String msg = "Saved " + saved + " mark(s)";
-                if (errors > 0) msg += " (" + errors + " errors)";
                 statusLabel.setText(msg);
                 loadStudents(subjectId, selectedOutOf);
             } catch (Exception e) {

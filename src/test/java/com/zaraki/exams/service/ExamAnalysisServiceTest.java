@@ -9,7 +9,7 @@ class ExamAnalysisServiceTest {
     void normalizeByOutOf_returnsOriginalScoreWhenOutOf100() {
         ExamAnalysisService service = new ExamAnalysisService();
         double result = service.normalizeByOutOf(85.0, 1L, 1L);
-        assertTrue(result == 85.0 || result > 0);
+        assertTrue(result > 0);
     }
 
     @Test

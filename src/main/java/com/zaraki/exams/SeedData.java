@@ -155,7 +155,7 @@ public class SeedData {
                 int count = 0;
                 for (long sid : studentIds) {
                     for (long subjId : subjectIds) {
-                        double score = Math.round((20 + rng.nextDouble() * 60) * 10.0) / 10.0;
+                        double score = Math.round((20 + rng.nextDouble() * 61) * 10.0) / 10.0;
                         ps.setLong(1, examId);
                         ps.setLong(2, sid);
                         ps.setLong(3, subjId);

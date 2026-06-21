@@ -135,7 +135,7 @@ public class BulkMarksForm {
             int form = formBox.getValue();
             String stream = streamBox.getValue();
             if (isTeacher) {
-                String subjName = subjectBox.getValue().split(" - ")[1];
+                String subjName = subjectBox.getValue().split(" - ", 2)[1];
                 fc.setInitialFileName(subjName + "_form" + form + "_" + stream + ".xlsx");
             } else {
                 fc.setInitialFileName("marks_template_form" + form + "_" + stream + ".xlsx");
@@ -187,6 +187,8 @@ public class BulkMarksForm {
             if (file.length() > 10_485_760) { showAlert("File too large. Maximum size is 10 MB."); return; }
 
             long examId = parseExamId();
+            int form = formBox.getValue();
+            String stream = streamBox.getValue();
             spinner.setVisible(true);
             statusLabel.setText("Processing upload...");
 
@@ -194,9 +196,9 @@ public class BulkMarksForm {
                 @Override protected ExcelService.ImportResult call() {
                     if (isTeacher) {
                         long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
-                        return excelService.processSubjectUpload(file.toPath(), examId, subjectId);
+                        return excelService.processSubjectUpload(file.toPath(), examId, subjectId, form, stream);
                     }
-                    return excelService.processUpload(file.toPath(), examId);
+                    return excelService.processUpload(file.toPath(), examId, form, stream);
                 }
             };
             task.setOnSucceeded(ev -> {
@@ -259,6 +261,8 @@ public class BulkMarksForm {
         uploadAllBtn.setOnAction(e -> {
             if (examBox.getValue() == null) { showAlert("Select an exam."); return; }
             long examId = parseExamId();
+            int form = formBox.getValue();
+            String stream = streamBox.getValue();
             FileChooser fc = new FileChooser();
             fc.setTitle("Upload Multi-Sheet Excel File");
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel Files", "*.xlsx"));
@@ -271,7 +275,7 @@ public class BulkMarksForm {
 
             Task<ExcelService.ImportResult> task = new Task<>() {
                 @Override protected ExcelService.ImportResult call() {
-                    return excelService.processTeacherMultiSheetUpload(file.toPath(), examId);
+                    return excelService.processTeacherMultiSheetUpload(file.toPath(), examId, form, stream);
                 }
             };
             task.setOnSucceeded(ev -> {
@@ -416,7 +420,7 @@ public class BulkMarksForm {
         Set<String> streams = new TreeSet<>();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM students ORDER BY stream")) {
+             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
             while (rs.next()) streams.add(rs.getString("stream"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
         streamBox.setItems(FXCollections.observableArrayList(streams));
@@ -427,14 +431,6 @@ public class BulkMarksForm {
              PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM students WHERE form = ? AND stream = ? AND deallocated = 0")) {
             ps.setInt(1, form); ps.setString(2, stream);
             ResultSet rs = ps.executeQuery();
-            return rs.next() ? rs.getInt(1) : 0;
-        } catch (SQLException e) { return 0; }
-    }
-
-    private int countSubjects() {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM subjects")) {
             return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException e) { return 0; }
     }

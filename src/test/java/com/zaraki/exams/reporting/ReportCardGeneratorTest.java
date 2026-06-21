@@ -88,7 +88,7 @@ class ReportCardGeneratorTest {
 
     @Test
     @Order(3)
-    void generateStudentReport_withNoMarks_doesNotThrow() {
+    void generateStudentReport_withSingleMark_doesNotThrow() {
         ReportCardGenerator gen = new ReportCardGenerator();
         Path output = new File("target/test_report_empty.pdf").toPath();
         try (Connection conn = db.getConnection(); Statement st = conn.createStatement()) {

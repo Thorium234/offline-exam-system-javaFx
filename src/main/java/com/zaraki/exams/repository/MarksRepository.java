@@ -13,8 +13,8 @@ import java.util.Optional;
 public class MarksRepository {
 
     private static final String INSERT_SQL = """
-        INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status, teacher_comment, teacher_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status, teacher_comment, teacher_name, deviation)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """;
 
     private final DatabaseEngine db;
@@ -45,6 +45,7 @@ public class MarksRepository {
                     ps.setString(7, mark.getStatus() != null ? mark.getStatus() : "P");
                     ps.setString(8, mark.getTeacherComment());
                     ps.setString(9, mark.getTeacherName());
+                    ps.setObject(10, mark.getDeviation(), java.sql.Types.REAL);
                     ps.addBatch();
                     count++;
 
@@ -66,7 +67,7 @@ public class MarksRepository {
     }
 
     public List<Mark> findByExamId(long examId) {
-        String sql = "SELECT exam_id, student_id, subject_id, score, grade_achieved, points_achieved " +
+        String sql = "SELECT exam_id, student_id, subject_id, score, grade_achieved, points_achieved, deviation " +
                      "FROM marks WHERE exam_id = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -81,6 +82,8 @@ public class MarksRepository {
                 m.setScore(rs.getDouble("score"));
                 m.setGradeAchieved(rs.getString("grade_achieved"));
                 m.setPointsAchieved(rs.getInt("points_achieved"));
+                m.setDeviation(rs.getDouble("deviation"));
+                if (rs.wasNull()) m.setDeviation(0.0);
                 results.add(m);
             }
             return results;
@@ -90,7 +93,7 @@ public class MarksRepository {
     }
 
     public Optional<Mark> findByExamStudentSubject(long examId, long studentId, long subjectId) {
-        String sql = "SELECT exam_id, student_id, subject_id, score, grade_achieved, points_achieved " +
+        String sql = "SELECT exam_id, student_id, subject_id, score, grade_achieved, points_achieved, deviation " +
                      "FROM marks WHERE exam_id = ? AND student_id = ? AND subject_id = ?";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -106,6 +109,8 @@ public class MarksRepository {
                 m.setScore(rs.getDouble("score"));
                 m.setGradeAchieved(rs.getString("grade_achieved"));
                 m.setPointsAchieved(rs.getInt("points_achieved"));
+                m.setDeviation(rs.getDouble("deviation"));
+                if (rs.wasNull()) m.setDeviation(0.0);
                 return Optional.of(m);
             }
             return Optional.empty();

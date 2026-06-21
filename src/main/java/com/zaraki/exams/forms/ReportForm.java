@@ -26,7 +26,7 @@ import java.util.List;
 
 public class ReportForm {
 
-    private static final String PRIMARY = "#1a237e";
+    private static final String PRIMARY = AppTheme.PRIMARY;
 
     private final DatabaseEngine db;
     private final ReportCardGenerator reportGenerator;
@@ -154,16 +154,12 @@ public class ReportForm {
             if (!isExamReleased(selectedExamId)) { showAlert("Exam not released by admin. Preview unavailable."); return; }
             spinner.setVisible(true);
             statusLabel.setText("Loading preview...");
-            Task<Void> task = new Task<>() {
-                @Override protected Void call() { return null; }
-            };
-            task.setOnSucceeded(ev -> {
+            Platform.runLater(() -> {
                 loadIndividualPreview(selectedExamId, foundStudentId);
                 spinner.setVisible(false);
                 previewScroll.setVisible(true);
                 statusLabel.setText("Preview ready.");
             });
-            new Thread(task).start();
         });
 
         // ── Generate bulk PDF ──
@@ -417,7 +413,7 @@ public class ReportForm {
     private void loadStreams(ComboBox<String> box) {
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM students WHERE stream IS NOT NULL ORDER BY stream")) {
+             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
             while (rs.next()) box.getItems().add(rs.getString("stream"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }
@@ -425,7 +421,7 @@ public class ReportForm {
     private void loadForms(ComboBox<String> box) {
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE form IS NOT NULL ORDER BY form")) {
+             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
             while (rs.next()) box.getItems().add(rs.getString("form"));
         } catch (SQLException e) { showAlert(e.getMessage()); }
     }
