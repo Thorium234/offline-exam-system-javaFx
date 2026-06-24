@@ -616,10 +616,17 @@ public class DashboardForm {
     }
 
     private int count(String table) {
-        if (!table.matches("[a-zA-Z_]+")) return 0;
+        Map<String, String> allowed = Map.of(
+            "students", "students",
+            "subjects", "subjects",
+            "exams", "exams",
+            "marks", "marks"
+        );
+        String actualTable = allowed.get(table);
+        if (actualTable == null) return 0;
         try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM " + table)) {
+             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM " + actualTable);
+             ResultSet rs = ps.executeQuery()) {
             return rs.getInt(1);
         } catch (SQLException e) { return 0; }
     }

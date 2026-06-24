@@ -310,10 +310,11 @@ public class TeacherDashboardForm {
             Task<Integer> saveTask = new Task<>() {
                 @Override protected Integer call() {
                     int saved = 0;
-                    try (Connection conn = db.getConnection();
-                         PreparedStatement ps = conn.prepareStatement(
+                    Connection conn = db.getConnection();
+                    try (PreparedStatement ps = conn.prepareStatement(
                              "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) "
                              + "VALUES (?,?,?,?,?,?)")) {
+                        conn.setAutoCommit(false);
                         for (MarkRow r : dirty) {
                             ps.setLong(1, selectedExamId);
                             ps.setLong(2, r.studentId);
@@ -325,7 +326,13 @@ public class TeacherDashboardForm {
                             saved++;
                         }
                         ps.executeBatch();
-                    } catch (SQLException ex) { throw new RuntimeException(ex); }
+                        conn.commit();
+                    } catch (SQLException ex) {
+                        try { conn.rollback(); } catch (SQLException ignored) {}
+                        throw new RuntimeException(ex);
+                    } finally {
+                        try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
+                    }
                     return saved;
                 }
             };
