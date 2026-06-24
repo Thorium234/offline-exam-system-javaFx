@@ -637,4 +637,156 @@ public class ExamAnalysisService {
             return score;
         }
     }
+
+    // ─────────── Zeraki-style Analysis Enhancements ───────────
+
+    public record ExamSummary(int totalStudents, int totalSubjects,
+                               double overallMean, double highestScore, double lowestScore,
+                               int passCount, int totalCount,
+                               String bestSubject, String worstSubject) {
+        public double passRate() { return totalCount > 0 ? Math.round((double) passCount / totalCount * 1000.0) / 10.0 : 0; }
+    }
+
+    public ExamSummary computeExamSummary(long examId) {
+        String overviewSql = """
+            SELECT
+                COUNT(DISTINCT m.student_id) AS total_students,
+                COUNT(DISTINCT m.subject_id) AS total_subjects,
+                ROUND(AVG(m.score), 1) AS overall_mean,
+                ROUND(MAX(m.score), 1) AS highest_score,
+                ROUND(MIN(m.score), 1) AS lowest_score
+            FROM marks m WHERE m.exam_id = ?
+            """;
+        String passSql = """
+            SELECT COUNT(DISTINCT m.student_id) AS pass_count
+            FROM marks m
+            JOIN grading_scales g ON (g.subject_id IS NULL OR g.subject_id = m.subject_id)
+                AND m.score BETWEEN g.minimum_mark AND g.maximum_mark
+            WHERE m.exam_id = ? AND g.points >= 6
+            """;
+        String bestWorstSql = """
+            SELECT sub.subject_name, ROUND(AVG(m.score), 1) AS mean_score
+            FROM marks m JOIN subjects sub ON sub.id = m.subject_id
+            WHERE m.exam_id = ?
+            GROUP BY sub.id, sub.subject_name
+            ORDER BY mean_score DESC
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps1 = conn.prepareStatement(overviewSql);
+             PreparedStatement ps2 = conn.prepareStatement(passSql);
+             PreparedStatement ps3 = conn.prepareStatement(bestWorstSql)) {
+
+            ps1.setLong(1, examId);
+            ResultSet rs1 = ps1.executeQuery();
+            int totalStudents = 0, totalSubjects = 0;
+            double mean = 0, highest = 0, lowest = 0;
+            if (rs1.next()) {
+                totalStudents = rs1.getInt("total_students");
+                totalSubjects = rs1.getInt("total_subjects");
+                mean = rs1.getDouble("overall_mean");
+                highest = rs1.getDouble("highest_score");
+                lowest = rs1.getDouble("lowest_score");
+            }
+
+            ps2.setLong(1, examId);
+            ResultSet rs2 = ps2.executeQuery();
+            int passCount = rs2.next() ? rs2.getInt("pass_count") : 0;
+
+            ps3.setLong(1, examId);
+            ResultSet rs3 = ps3.executeQuery();
+            String bestSubject = "", worstSubject = "";
+            List<String> names = new ArrayList<>();
+            while (rs3.next()) {
+                String n = rs3.getString("subject_name");
+                names.add(n);
+                if (bestSubject.isEmpty()) bestSubject = n;
+                worstSubject = n;
+            }
+
+            return new ExamSummary(totalStudents, totalSubjects, mean, highest, lowest,
+                passCount, totalStudents, bestSubject, worstSubject);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to compute exam summary", e);
+        }
+    }
+
+    public record WeakArea(String subjectName, double meanScore, String grade) {}
+
+    public List<WeakArea> computeWeakAreas(long examId) {
+        String sql = """
+            SELECT sub.subject_name, ROUND(AVG(m.score), 1) AS mean_score
+            FROM marks m JOIN subjects sub ON sub.id = m.subject_id
+            WHERE m.exam_id = ?
+            GROUP BY sub.id, sub.subject_name
+            ORDER BY mean_score ASC
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ResultSet rs = ps.executeQuery();
+            List<WeakArea> list = new ArrayList<>();
+            while (rs.next()) {
+                String name = rs.getString("subject_name");
+                double meanScore = rs.getDouble("mean_score");
+                String grade = determineGradeAndPoints(meanScore, null, examId).split("\\|")[0];
+                list.add(new WeakArea(name, meanScore, grade));
+            }
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to compute weak areas", e);
+        }
+    }
+
+    public record ClassTrend(long examId, String examLabel, double meanScore) {}
+
+    public List<ClassTrend> computeClassTrends() {
+        String sql = """
+            SELECT e.id, e.academic_year || ' ' || e.term || ' ' || e.exam_series AS label,
+                   ROUND(AVG(m.score), 1) AS mean_score
+            FROM marks m JOIN exams e ON e.id = m.exam_id
+            GROUP BY e.id, e.academic_year, e.term, e.exam_series
+            ORDER BY e.id
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            List<ClassTrend> list = new ArrayList<>();
+            while (rs.next())
+                list.add(new ClassTrend(rs.getLong("id"), rs.getString("label"), rs.getDouble("mean_score")));
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to compute class trends", e);
+        }
+    }
+
+    public record StudentWeakArea(String subjectName, double score, String grade, double classMean, double deviation) {}
+
+    public List<StudentWeakArea> computeStudentWeakAreas(long examId, long studentId) {
+        String sql = """
+            SELECT sub.subject_name, m.score, m.grade_achieved,
+                   ROUND((SELECT AVG(m2.score) FROM marks m2 WHERE m2.exam_id = ? AND m2.subject_id = m.subject_id), 1) AS class_mean
+            FROM marks m JOIN subjects sub ON sub.id = m.subject_id
+            WHERE m.exam_id = ? AND m.student_id = ?
+            ORDER BY m.score ASC
+            """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ps.setLong(2, examId);
+            ps.setLong(3, studentId);
+            ResultSet rs = ps.executeQuery();
+            List<StudentWeakArea> list = new ArrayList<>();
+            while (rs.next()) {
+                String name = rs.getString("subject_name");
+                double score = rs.getDouble("score");
+                String grade = rs.getString("grade_achieved");
+                double classMean = rs.getDouble("class_mean");
+                double deviation = Math.round((score - classMean) * 10.0) / 10.0;
+                list.add(new StudentWeakArea(name, score, grade != null ? grade : "N/A", classMean, deviation));
+            }
+            return list;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to compute student weak areas", e);
+        }
+    }
 }
