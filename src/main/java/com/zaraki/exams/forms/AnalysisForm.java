@@ -29,7 +29,11 @@ import java.util.*;
 
 public class AnalysisForm {
 
-    private static final String PRIMARY = "#1a237e";
+    private static final String PRIMARY = "#c62828";
+    private static final String RED = "#c62828";
+    private static final String GREEN = "#2e7d32";
+    private static final String WHITE_BG = "#f5f5f5";
+    private static final String[] CHART_COLORS = {RED, GREEN, WHITE_BG};
 
     private final DatabaseEngine db;
     private final ExamAnalysisService analysisService;
@@ -119,32 +123,58 @@ public class AnalysisForm {
         HBox cards = new HBox(12);
         cards.setPadding(new Insets(5, 0, 5, 0));
         Node[] cardNodes = {
-            summaryCard("Overall Mean", summaryMean, "#1a237e"),
-            summaryCard("Students", summaryStudents, "#2e7d32"),
-            summaryCard("Subjects", summarySubjects, "#e65100"),
-            summaryCard("Pass Rate", summaryPassRate, "#1565c0"),
-            summaryCard("Highest", summaryHighest, "#2e7d32"),
-            summaryCard("Lowest", summaryLowest, "#c62828"),
-            summaryCard("Best Subject", summaryBestSubj, "#1a237e"),
-            summaryCard("Needs Focus", summaryWorstSubj, "#c62828"),
+            summaryCard("Overall Mean", summaryMean, RED),
+            summaryCard("Students", summaryStudents, GREEN),
+            summaryCard("Subjects", summarySubjects, WHITE_BG),
+            summaryCard("Pass Rate", summaryPassRate, RED),
+            summaryCard("Highest", summaryHighest, GREEN),
+            summaryCard("Lowest", summaryLowest, WHITE_BG),
+            summaryCard("Best Subject", summaryBestSubj, RED),
+            summaryCard("Needs Focus", summaryWorstSubj, GREEN),
         };
         cards.getChildren().addAll(cardNodes);
         return cards;
     }
 
-    private VBox summaryCard(String title, Label valueLabel, String color) {
+    private VBox summaryCard(String title, Label valueLabel, String bgColor) {
         VBox card = new VBox(3);
         card.setPrefSize(130, 65);
         card.setAlignment(Pos.CENTER);
-        card.setStyle("-fx-background-color: white; -fx-background-radius: 8; "
-            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2);");
+        boolean isWhite = WHITE_BG.equals(bgColor);
+        String textColor = isWhite ? "#333333" : "white";
+        card.setStyle("-fx-background-color: " + bgColor + "; -fx-background-radius: 8; "
+            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 6, 0, 0, 2);");
         Label titleLbl = new Label(title);
         titleLbl.setFont(Font.font("System", 10));
-        titleLbl.setTextFill(Color.gray(0.5));
+        titleLbl.setTextFill(isWhite ? Color.gray(0.4) : Color.web("white", 0.8));
         valueLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
-        valueLabel.setTextFill(Color.web(color));
+        valueLabel.setTextFill(Color.web(textColor));
         card.getChildren().addAll(valueLabel, titleLbl);
         return card;
+    }
+
+    // ────────────────────── Chart Color Helpers ──────────────────────
+
+    private void styleBarSeries(XYChart.Series<?, ? extends Number> series) {
+        int i = 0;
+        for (var data : series.getData()) {
+            String color = CHART_COLORS[i % CHART_COLORS.length];
+            data.nodeProperty().addListener((obs, old, node) -> {
+                if (node != null) node.setStyle("-fx-bar-fill: " + color + ";");
+            });
+            i++;
+        }
+    }
+
+    private void stylePieData(PieChart chart) {
+        int i = 0;
+        for (var data : chart.getData()) {
+            String color = CHART_COLORS[i % CHART_COLORS.length];
+            data.nodeProperty().addListener((obs, old, node) -> {
+                if (node != null) node.setStyle("-fx-pie-color: " + color + ";");
+            });
+            i++;
+        }
     }
 
     // ────────────────────── Dashboard Tab ──────────────────────
@@ -658,6 +688,7 @@ public class AnalysisForm {
                 weakSeries.getData().add(new XYChart.Data<>(wa.subjectName(), wa.meanScore()));
             weakAreasChart.getData().clear();
             weakAreasChart.getData().add(weakSeries);
+            styleBarSeries(weakSeries);
 
             // Weak tab chart & table
             XYChart.Series<String, Number> weakTabSeries = new XYChart.Series<>();
@@ -668,6 +699,7 @@ public class AnalysisForm {
             }
             weakTabChart.getData().clear();
             weakTabChart.getData().add(weakTabSeries);
+            styleBarSeries(weakTabSeries);
             weakTable.setItems(weakRows);
         });
         weakTask.setOnFailed(ev -> { /* ignore */ });
@@ -731,6 +763,7 @@ public class AnalysisForm {
             for (var entry : overallGrades.entrySet())
                 pieData.add(new PieChart.Data(entry.getKey(), entry.getValue()));
             gradePieChart.setData(pieData);
+            stylePieData(gradePieChart);
 
             // Table
             gradeDistTable.getColumns().clear();
@@ -775,6 +808,7 @@ public class AnalysisForm {
             subjectTable.setItems(sRows);
             subjectBarChart.getData().clear();
             subjectBarChart.getData().add(barSeries);
+            styleBarSeries(barSeries);
             spinner.setVisible(false);
         });
         subTask.setOnFailed(ev2 -> { UIUtils.showError(subTask.getException().getMessage()); spinner.setVisible(false); });
