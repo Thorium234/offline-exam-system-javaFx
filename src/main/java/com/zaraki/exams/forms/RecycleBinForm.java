@@ -1,6 +1,6 @@
 package com.zaraki.exams.forms;
 
-import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.StudentRepository;
 import com.zaraki.exams.util.UIUtils;
 import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.application.Platform;
@@ -12,22 +12,16 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class RecycleBinForm {
 
-
-
-    private final DatabaseEngine db;
+    private final StudentRepository studentRepo = new StudentRepository();
     private final Runnable onBackToDashboard;
     private final StackPane root;
 
-    public RecycleBinForm(DatabaseEngine db, Runnable onBackToDashboard) {
-        this.db = db;
+    public RecycleBinForm(Runnable onBackToDashboard) {
         this.onBackToDashboard = onBackToDashboard;
         this.root = new StackPane();
         showRecycledStudents();
@@ -44,7 +38,7 @@ public class RecycleBinForm {
     private void showRecycledStudents() {
         VBox view = new VBox(15);
 
-        Button backBtn = new Button("← Back to Dashboard");
+        Button backBtn = new Button("\u2190 Back to Dashboard");
         backBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: " + PRIMARY + "; "
             + "-fx-font-size: 13; -fx-padding: 5 0 5 0;");
         backBtn.setOnAction(e -> onBackToDashboard.run());
@@ -69,7 +63,7 @@ public class RecycleBinForm {
         TableView<RecycleRow> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        TableColumn<RecycleRow, Boolean> colSel = new TableColumn<>("✓");
+        TableColumn<RecycleRow, Boolean> colSel = new TableColumn<>("\u2713");
         colSel.setPrefWidth(40);
         colSel.setCellValueFactory(cd -> cd.getValue().selectedProperty());
         colSel.setCellFactory(col -> new CheckBoxTableCell<>());
@@ -99,24 +93,14 @@ public class RecycleBinForm {
 
         Task<Void> loadTask = new Task<>() {
             @Override protected Void call() {
-                List<RecycleRow> rows = new ArrayList<>();
-                try (Connection conn = db.getConnection();
-                     Statement st = conn.createStatement();
-                     ResultSet rs = st.executeQuery(
-                         "SELECT id, admission_number, full_name, form, stream "
-                         + "FROM students WHERE deallocated = 1 ORDER BY id")) {
-                    while (rs.next()) {
-                        rows.add(new RecycleRow(rs.getLong("id"),
-                            rs.getString("admission_number"),
-                            rs.getString("full_name"),
-                            rs.getInt("form"),
-                            rs.getString("stream")));
-                    }
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
+                List<Map<String, Object>> rows = studentRepo.findAllDeallocated();
                 Platform.runLater(() -> {
-                    data.setAll(rows);
+                    data.setAll(rows.stream().map(r -> new RecycleRow(
+                        (long) r.get("id"),
+                        (String) r.get("admission_number"),
+                        (String) r.get("full_name"),
+                        (int) r.get("form"),
+                        (String) r.get("stream"))).toList());
                     table.setItems(data);
                     spinner.setVisible(false);
                     updateStatus(statusLabel, table);
@@ -147,16 +131,8 @@ public class RecycleBinForm {
             if (selected.isEmpty()) { UIUtils.showError("No students selected."); return; }
             Set<Long> ids = selected.stream().map(r -> r.id).collect(Collectors.toSet());
             Task<Void> task = new Task<>() {
-                @Override protected Void call() throws Exception {
-                    try (Connection conn = db.getConnection();
-                         PreparedStatement ps = conn.prepareStatement(
-                             "UPDATE students SET deallocated = 0 WHERE id = ?")) {
-                        for (Long id : ids) {
-                            ps.setLong(1, id);
-                            ps.addBatch();
-                        }
-                        ps.executeBatch();
-                    }
+                @Override protected Void call() {
+                    studentRepo.batchRestore(ids);
                     return null;
                 }
             };
@@ -180,17 +156,8 @@ public class RecycleBinForm {
             if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
             Set<Long> ids = selected.stream().map(r -> r.id).collect(Collectors.toSet());
             Task<Void> task = new Task<>() {
-                @Override protected Void call() throws Exception {
-                    try (Connection conn = db.getConnection()) {
-                        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM marks WHERE student_id = ?")) {
-                            for (Long id : ids) { ps.setLong(1, id); ps.addBatch(); }
-                            ps.executeBatch();
-                        }
-                        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM students WHERE id = ?")) {
-                            for (Long id : ids) { ps.setLong(1, id); ps.addBatch(); }
-                            ps.executeBatch();
-                        }
-                    }
+                @Override protected Void call() {
+                    studentRepo.batchPermanentDelete(ids);
                     return null;
                 }
             };
@@ -215,8 +182,6 @@ public class RecycleBinForm {
         long sel = table.getItems().stream().filter(r -> r instanceof RecycleRow && ((RecycleRow)r).isSelected()).count();
         label.setText(sel + " of " + total + " selected");
     }
-
-    // ───── Row Class ─────
 
     public static class RecycleRow {
         private final long id;
@@ -243,8 +208,6 @@ public class RecycleBinForm {
         public javafx.beans.property.BooleanProperty selectedProperty() { return selected; }
     }
 
-    // ───── CheckBox TableCell ─────
-
     private static class CheckBoxTableCell<S> extends TableCell<S, Boolean> {
         private final CheckBox checkBox = new CheckBox();
 
@@ -266,6 +229,4 @@ public class RecycleBinForm {
             }
         }
     }
-
-
 }

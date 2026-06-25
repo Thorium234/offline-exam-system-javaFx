@@ -1,20 +1,19 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.ExamRepository;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
-import java.sql.*;
-
 public class ExamForm {
 
-    private final DatabaseEngine db;
+    private final ExamRepository examRepo;
 
     public ExamForm(DatabaseEngine db) {
-        this.db = db;
+        this.examRepo = new ExamRepository();
     }
 
     public VBox getView() {
@@ -45,24 +44,19 @@ public class ExamForm {
         table.setItems(data);
 
         addBtn.setOnAction(e -> {
-            try (Connection conn = db.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO exams (academic_year, term, exam_series) VALUES (?,?,?)")) {
-                String year = yearField.getText().trim();
-                String term = termBox.getValue();
-                String series = seriesField.getText().trim();
-                if (year.isEmpty() || term == null || series.isEmpty()) {
-                    UIUtils.showError("Year, Term, and Series are required.");
-                    return;
-                }
-                if (!year.matches("\\d{4}")) {
-                    UIUtils.showError("Year must be a 4-digit number (e.g. 2026).");
-                    return;
-                }
-                ps.setString(1, year);
-                ps.setString(2, term);
-                ps.setString(3, series);
-                ps.executeUpdate();
+            String year = yearField.getText().trim();
+            String term = termBox.getValue();
+            String series = seriesField.getText().trim();
+            if (year.isEmpty() || term == null || series.isEmpty()) {
+                UIUtils.showError("Year, Term, and Series are required.");
+                return;
+            }
+            if (!year.matches("\\d{4}")) {
+                UIUtils.showError("Year must be a 4-digit number (e.g. 2026).");
+                return;
+            }
+            try {
+                examRepo.insert(year, term, series);
                 load(data);
                 yearField.clear(); termBox.setValue(null); seriesField.clear();
             } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
@@ -74,18 +68,16 @@ public class ExamForm {
 
     private void load(ObservableList<ExamRow> data) {
         data.clear();
-        String sql = """
-            SELECT e.id, e.academic_year, e.term, e.exam_series,
-                   COALESCE((SELECT SUM(COALESCE(es.out_of, 100)) FROM exam_subjects es WHERE es.exam_id = e.id), 0) AS max_marks
-            FROM exams e ORDER BY e.id
-            """;
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(sql)) {
-            while (rs.next())
-                data.add(new ExamRow(rs.getLong("id"), rs.getString("academic_year"),
-                    rs.getString("term"), rs.getString("exam_series"), rs.getInt("max_marks")));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        try {
+            var exams = examRepo.findAll();
+            for (var e : exams)
+                data.add(new ExamRow(
+                    (Long) e.get("id"),
+                    (String) e.get("academic_year"),
+                    (String) e.get("term"),
+                    (String) e.get("exam_series"),
+                    (Integer) e.get("max_marks")));
+        } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
     }
 
     public static class ExamRow {

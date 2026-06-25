@@ -1,6 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.ExamRepository;
+import com.zaraki.exams.repository.UserRepository;
 import com.zaraki.exams.service.ExamAnalysisService;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
@@ -32,6 +34,8 @@ public class PublishForm {
 
     private final DatabaseEngine db;
     private final ExamAnalysisService analysisService;
+    private final ExamRepository examRepo;
+    private final UserRepository userRepo;
     private final String displayName;
     private final String username;
     private final String role;
@@ -56,21 +60,12 @@ public class PublishForm {
     public PublishForm(DatabaseEngine db, String displayName, String username, String role) {
         this.db = db;
         this.analysisService = new ExamAnalysisService();
+        this.examRepo = new ExamRepository();
+        this.userRepo = new UserRepository();
         this.displayName = displayName;
         this.username = username;
         this.role = role;
-        this.currentUserId = resolveUserId();
-    }
-
-    private long resolveUserId() {
-        try (PreparedStatement ps = db.getConnection().prepareStatement("SELECT id FROM users WHERE username = ?")) {
-            ps.setString(1, username);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getLong("id");
-        } catch (SQLException e) {
-            System.err.println("Failed to resolve user ID: " + e.getMessage());
-        }
-        return 0;
+        this.currentUserId = userRepo.resolveUserId(username);
     }
 
     public VBox getView() {
@@ -207,13 +202,12 @@ public class PublishForm {
     }
 
     private void loadExams() {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams ORDER BY id DESC")) {
-            while (rs.next())
-                examBox.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
-                    + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        try {
+            var exams = examRepo.findAllDesc();
+            for (var e : exams)
+                examBox.getItems().add(e.get("id") + " - " + e.get("academic_year")
+                    + " " + e.get("term") + " " + e.get("exam_series"));
+        } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
     }
 
     private void loadSubjectStatus() {
@@ -590,12 +584,7 @@ public class PublishForm {
     }
 
     public static boolean isExamReleased(long examId) {
-        try (Connection conn = DatabaseEngine.getInstance().getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT released FROM exams WHERE id = ?")) {
-            ps.setLong(1, examId);
-            ResultSet rs = ps.executeQuery();
-            return rs.next() && rs.getInt("released") == 1;
-        } catch (SQLException e) { return false; }
+        return new ExamRepository().isReleased(examId);
     }
 
     // ─── Multi-Sheet Excel Upload ──────────────────────────

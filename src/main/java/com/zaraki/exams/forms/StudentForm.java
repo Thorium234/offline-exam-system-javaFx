@@ -2,6 +2,8 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.reporting.ReportCardGenerator;
+import com.zaraki.exams.repository.StudentRepository;
+import com.zaraki.exams.repository.SubjectRepository;
 import com.zaraki.exams.service.ExcelService;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
@@ -19,13 +21,14 @@ import javafx.stage.Stage;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class StudentForm {
 
     private final DatabaseEngine db;
+    private final StudentRepository studentRepo;
+    private final SubjectRepository subjectRepo;
     private final ExcelService excelService;
     private final Stage stage;
 
@@ -36,6 +39,8 @@ public class StudentForm {
     public StudentForm(DatabaseEngine db, Stage stage) {
         this.db = db;
         this.stage = stage;
+        this.studentRepo = new StudentRepository();
+        this.subjectRepo = new SubjectRepository();
         this.excelService = new ExcelService();
     }
 
@@ -123,30 +128,24 @@ public class StudentForm {
         table.setItems(data);
 
         addBtn.setOnAction(e -> {
-            try (Connection conn = db.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO students (admission_number, full_name, form, stream) VALUES (?,?,?,?)")) {
-                String adm = admField.getText().trim();
-                String name = nameField.getText().trim();
-                String formText = formField.getText().trim();
-                String stream = streamField.getText().trim();
-                if (adm.isEmpty() || name.isEmpty() || formText.isEmpty() || stream.isEmpty()) {
-                    UIUtils.showError("All fields are required.");
-                    return;
-                }
-                int formNum;
-                try {
-                    formNum = Integer.parseInt(formText);
-                    if (formNum < 1 || formNum > 4) throw new NumberFormatException();
-                } catch (NumberFormatException ex) {
-                    UIUtils.showError("Form must be a number between 1 and 4.");
-                    return;
-                }
-                ps.setString(1, adm);
-                ps.setString(2, name);
-                ps.setInt(3, formNum);
-                ps.setString(4, stream);
-                ps.executeUpdate();
+            String adm = admField.getText().trim();
+            String name = nameField.getText().trim();
+            String formText = formField.getText().trim();
+            String stream = streamField.getText().trim();
+            if (adm.isEmpty() || name.isEmpty() || formText.isEmpty() || stream.isEmpty()) {
+                UIUtils.showError("All fields are required.");
+                return;
+            }
+            int formNum;
+            try {
+                formNum = Integer.parseInt(formText);
+                if (formNum < 1 || formNum > 4) throw new NumberFormatException();
+            } catch (NumberFormatException ex) {
+                UIUtils.showError("Form must be a number between 1 and 4.");
+                return;
+            }
+            try {
+                studentRepo.insert(adm, name, formNum, stream);
                 load();
                 admField.clear(); nameField.clear(); formField.clear(); streamField.clear();
             } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
@@ -238,32 +237,35 @@ public class StudentForm {
 
     private void load() {
         data.clear();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-              ResultSet rs = st.executeQuery("SELECT id, admission_number, full_name, form, stream FROM students WHERE deallocated = 0")) {
-            while (rs.next())
-                data.add(new StudentRow(rs.getLong("id"), rs.getString("admission_number"),
-                    rs.getString("full_name"), rs.getInt("form"), rs.getString("stream")));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        try {
+            var students = studentRepo.findAllActive();
+            for (var s : students)
+                data.add(new StudentRow(
+                    (Long) s.get("id"),
+                    (String) s.get("admission_number"),
+                    (String) s.get("full_name"),
+                    (Integer) s.get("form"),
+                    (String) s.get("stream")));
+        } catch (Exception e) { UIUtils.showError(e.getMessage()); }
     }
 
     private void uploadPhoto(StudentRow row) {
         FileChooser fc = new FileChooser();
         fc.setTitle("Select Photo for " + row.name);
         fc.getExtensionFilters().addAll(
-            new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif"));
+            new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg"));
         File file = fc.showOpenDialog(stage);
         if (file == null) return;
         if (file.length() > 2_097_152) { UIUtils.showError("Photo too large. Max 2 MB."); return; }
+        String name = file.getName().toLowerCase();
+        if (!(name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg"))) {
+            UIUtils.showError("Only PNG and JPEG images are supported.");
+            return;
+        }
         Task<Void> task = new Task<>() {
             @Override protected Void call() throws Exception {
                 byte[] bytes = Files.readAllBytes(file.toPath());
-                try (Connection conn = db.getConnection();
-                     PreparedStatement ps = conn.prepareStatement("UPDATE students SET photo = ? WHERE id = ?")) {
-                    ps.setBytes(1, bytes);
-                    ps.setLong(2, row.id);
-                    ps.executeUpdate();
-                }
+                studentRepo.updatePhoto(row.id, bytes);
                 return null;
             }
         };
@@ -290,30 +292,16 @@ public class StudentForm {
         Map<Long, CheckBox> subjBoxes = new LinkedHashMap<>();
         Task<Void> task = new Task<>() {
             @Override protected Void call() {
-                Set<Long> enrolled = new HashSet<>();
-                try (Connection conn = db.getConnection();
-                     PreparedStatement ps = conn.prepareStatement(
-                         "SELECT subject_id FROM student_subjects WHERE student_id = ?")) {
-                    ps.setLong(1, row.id);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) enrolled.add(rs.getLong("subject_id"));
-                    }
-                } catch (SQLException e) { throw new RuntimeException(e); }
-
-                ObservableList<SubjectInfo> subjects = FXCollections.observableArrayList();
-                try (Connection conn = db.getConnection();
-                     Statement st = conn.createStatement();
-                     ResultSet rs = st.executeQuery("SELECT id, subject_code, subject_name FROM subjects ORDER BY subject_name")) {
-                    while (rs.next())
-                        subjects.add(new SubjectInfo(rs.getLong("id"), rs.getString("subject_code"), rs.getString("subject_name")));
-                } catch (SQLException e) { throw new RuntimeException(e); }
+                Set<Long> enrolled = studentRepo.getEnrolledSubjectIds(row.id);
+                var subjects = subjectRepo.findAllSimple();
 
                 javafx.application.Platform.runLater(() -> {
                     content.getChildren().clear();
-                    for (SubjectInfo si : subjects) {
-                        CheckBox cb = new CheckBox(si.code + " - " + si.name);
-                        cb.setSelected(enrolled.contains(si.id));
-                        subjBoxes.put(si.id, cb);
+                    for (var si : subjects) {
+                        Long sid = (Long) si.get("id");
+                        CheckBox cb = new CheckBox(si.get("subject_code") + " - " + si.get("subject_name"));
+                        cb.setSelected(enrolled.contains(sid));
+                        subjBoxes.put(sid, cb);
                         content.getChildren().add(cb);
                     }
                     Button saveBtn = new Button("Save");
@@ -332,20 +320,10 @@ public class StudentForm {
     private void saveSubjects(long studentId, Map<Long, CheckBox> boxes, Dialog<?> dialog) {
         Task<Void> task = new Task<>() {
             @Override protected Void call() {
-                try (Connection conn = db.getConnection();
-                     PreparedStatement del = conn.prepareStatement("DELETE FROM student_subjects WHERE student_id = ?");
-                     PreparedStatement ins = conn.prepareStatement(
-                         "INSERT OR IGNORE INTO student_subjects (student_id, subject_id) VALUES (?,?)")) {
-                    del.setLong(1, studentId);
-                    del.executeUpdate();
-                    for (var entry : boxes.entrySet()) {
-                        if (entry.getValue().isSelected()) {
-                            ins.setLong(1, studentId);
-                            ins.setLong(2, entry.getKey());
-                            ins.executeUpdate();
-                        }
-                    }
-                } catch (SQLException e) { throw new RuntimeException(e); }
+                Map<Long, Boolean> selections = new LinkedHashMap<>();
+                for (var entry : boxes.entrySet())
+                    selections.put(entry.getKey(), entry.getValue().isSelected());
+                studentRepo.saveSubjects(studentId, selections);
                 return null;
             }
         };
@@ -356,8 +334,6 @@ public class StudentForm {
         task.setOnFailed(ev -> UIUtils.showError(task.getException().getMessage()));
         new Thread(task).start();
     }
-
-    private record SubjectInfo(long id, String code, String name) {}
 
     public static class StudentRow {
         private final Long id; private final String admission, name; private final Integer form; private final String stream;

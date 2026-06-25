@@ -12,14 +12,27 @@ import java.sql.Statement;
 
 public class DatabaseEngine {
 
-    private static final String DB_URL = "jdbc:sqlite:exam_analysis.db";
+    private static String dbUrl = "jdbc:sqlite:" + System.getProperty("exam.db.path", "exam_analysis.db");
     private static volatile DatabaseEngine instance;
+
+    public static void setDbPath(String path) {
+        synchronized (DatabaseEngine.class) {
+            if (instance != null) {
+                throw new IllegalStateException("Cannot change DB path after DatabaseEngine is initialized");
+            }
+            dbUrl = "jdbc:sqlite:" + path;
+        }
+    }
+
+    public static String getDbUrl() {
+        return dbUrl;
+    }
 
     private DatabaseEngine() {
         try {
             Class.forName("org.sqlite.JDBC");
             // Run DDL once on the initial (FX thread) connection
-            try (Connection conn = DriverManager.getConnection(DB_URL)) {
+            try (Connection conn = DriverManager.getConnection(dbUrl)) {
                 try (Statement stmt = conn.createStatement()) {
                     stmt.execute("PRAGMA foreign_keys = ON;");
                     stmt.execute("PRAGMA journal_mode = WAL;");
@@ -54,7 +67,7 @@ public class DatabaseEngine {
 
     private static final ThreadLocal<Connection> connectionHolder = ThreadLocal.withInitial(() -> {
         try {
-            Connection conn = DriverManager.getConnection(DB_URL);
+            Connection conn = DriverManager.getConnection(dbUrl);
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("PRAGMA foreign_keys = ON;");
                 stmt.execute("PRAGMA journal_mode = WAL;");
@@ -69,7 +82,7 @@ public class DatabaseEngine {
         Connection conn = connectionHolder.get();
         try {
             if (conn.isClosed()) {
-                Connection newConn = DriverManager.getConnection(DB_URL);
+                Connection newConn = DriverManager.getConnection(dbUrl);
                 try (Statement stmt = newConn.createStatement()) {
                     stmt.execute("PRAGMA foreign_keys = ON;");
                     stmt.execute("PRAGMA journal_mode = WAL;");
@@ -290,10 +303,11 @@ public class DatabaseEngine {
         }
     }
 
-    private static final java.util.Set<String> ALLOWED_FILTER_COLUMNS = java.util.Set.of("form", "stream", "");
+    private static final java.util.Set<String> ALLOWED_FILTER_COLUMNS = java.util.Set.of(
+        "form", "stream", "status", "department", "grouping", "term", "exam_series", "");
 
     public static String validateFilterColumn(String col) {
-        if (!ALLOWED_FILTER_COLUMNS.contains(col))
+        if (col == null || !ALLOWED_FILTER_COLUMNS.contains(col))
             throw new IllegalArgumentException("Invalid filter column: " + col);
         return col;
     }

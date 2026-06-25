@@ -1,6 +1,8 @@
 package com.zaraki.exams.util;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.ExamRepository;
+import com.zaraki.exams.repository.StreamRepository;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.scene.control.*;
@@ -8,10 +10,6 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -19,7 +17,8 @@ import java.util.TreeSet;
 
 public class UIUtils {
 
-    private static final DatabaseEngine db = DatabaseEngine.getInstance();
+    private static final ExamRepository examRepo = new ExamRepository();
+    private static final StreamRepository streamRepo = new StreamRepository();
 
     private UIUtils() {}
 
@@ -53,59 +52,36 @@ public class UIUtils {
 
     public static void loadExams(ComboBox<String> box) {
         box.getItems().clear();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams ORDER BY id DESC")) {
-            while (rs.next()) {
-                box.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year") + " " + rs.getString("term") + " " + rs.getString("exam_series"));
+        try {
+            var exams = examRepo.findAllDesc();
+            for (var e : exams) {
+                box.getItems().add(e.get("id") + " - " + e.get("academic_year") + " " + e.get("term") + " " + e.get("exam_series"));
             }
-        } catch (SQLException e) {
-            showError(e.getMessage());
+        } catch (Exception ex) {
+            showError(ex.getMessage());
         }
     }
 
     public static void loadStreams(ComboBox<String> box) {
+        Set<String> names = streamRepo.findAllNames();
         box.getItems().clear();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
-            while (rs.next()) box.getItems().add(rs.getString("stream"));
-        } catch (SQLException e) {
-            showError(e.getMessage());
-        }
+        box.getItems().addAll(names);
     }
 
     public static void loadStreamsInto(Set<String> target) {
         target.clear();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
-            while (rs.next()) target.add(rs.getString("stream"));
-        } catch (SQLException e) {
-            showError(e.getMessage());
-        }
+        target.addAll(streamRepo.findAllNames());
     }
 
     public static void loadForms(ComboBox<String> box) {
         box.getItems().clear();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
-            while (rs.next()) box.getItems().add(rs.getString("form"));
-        } catch (SQLException e) {
-            showError(e.getMessage());
-        }
+        Set<Integer> forms = streamRepo.findAllDistinctForms();
+        for (int f : forms) box.getItems().add(String.valueOf(f));
     }
 
     public static List<Integer> loadFormsList() {
         List<Integer> forms = new ArrayList<>();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
-            while (rs.next()) forms.add(rs.getInt("form"));
-        } catch (SQLException e) {
-            showError(e.getMessage());
-        }
+        forms.addAll(streamRepo.findAllDistinctForms());
         return forms;
     }
 

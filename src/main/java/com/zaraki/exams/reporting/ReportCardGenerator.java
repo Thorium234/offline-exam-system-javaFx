@@ -35,31 +35,35 @@ import com.google.zxing.qrcode.QRCodeWriter;
 public class ReportCardGenerator {
 
     private final DatabaseEngine db;
+    private byte[] cachedLogoBytes;
+    private boolean logoLoaded = false;
 
     public ReportCardGenerator() {
         this.db = DatabaseEngine.getInstance();
     }
 
-    static {
-        SettingsManager sm = new SettingsManager();
-        String logoPath = sm.getLogoPath();
-        if (logoPath != null && !logoPath.isBlank()) {
+    private byte[] getLogoBytes() {
+        if (!logoLoaded) {
+            logoLoaded = true;
             try {
-                java.nio.file.Path p = java.nio.file.Paths.get(logoPath);
-                if (java.nio.file.Files.exists(p))
-                    backgroundLogoBytes = java.nio.file.Files.readAllBytes(p);
+                String logoPath = new SettingsManager().getLogoPath();
+                if (logoPath != null && !logoPath.isBlank()) {
+                    java.nio.file.Path p = java.nio.file.Paths.get(logoPath);
+                    if (java.nio.file.Files.exists(p))
+                        cachedLogoBytes = java.nio.file.Files.readAllBytes(p);
+                }
             } catch (Exception ignored) {}
         }
+        return cachedLogoBytes;
     }
 
-    private static byte[] backgroundLogoBytes;
-
-    private static class LogoBackground extends PdfPageEventHelper {
+    private class LogoBackground extends PdfPageEventHelper {
         @Override
         public void onStartPage(PdfWriter writer, Document doc) {
-            if (backgroundLogoBytes == null) return;
+            byte[] bytes = getLogoBytes();
+            if (bytes == null) return;
             try {
-                com.lowagie.text.Image logo = com.lowagie.text.Image.getInstance(backgroundLogoBytes);
+                com.lowagie.text.Image logo = com.lowagie.text.Image.getInstance(bytes);
                 PdfContentByte cb = writer.getDirectContentUnder();
                 float pageW = doc.getPageSize().getWidth();
                 float pageH = doc.getPageSize().getHeight();

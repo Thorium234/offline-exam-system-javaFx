@@ -3,6 +3,8 @@ package com.zaraki.exams.forms;
 import com.zaraki.exams.config.CurriculumSystem;
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.ExamRepository;
+import com.zaraki.exams.repository.StreamRepository;
 import com.zaraki.exams.service.ExamAnalysisService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -31,6 +33,8 @@ public class DashboardForm {
 
     private final DatabaseEngine db;
     private final SettingsManager settings;
+    private final ExamRepository examRepo;
+    private final StreamRepository streamRepo;
     private final StackPane contentArea;
     private final Stage stage;
     private final ComboBox<String> curriculumSwitcher;
@@ -65,6 +69,8 @@ public class DashboardForm {
         this.onLogout = onLogout;
         this.db = DatabaseEngine.getInstance();
         this.settings = new SettingsManager();
+        this.examRepo = new ExamRepository();
+        this.streamRepo = new StreamRepository();
         this.contentArea = new StackPane();
         this.contentArea.getStyleClass().add("content-area");
         this.curriculumSwitcher = new ComboBox<>();
@@ -476,13 +482,12 @@ public class DashboardForm {
     }
 
     private void loadExamList(ComboBox<String> box) {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams ORDER BY id DESC")) {
-            while (rs.next())
-                box.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
-                    + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { showAlert(e.getMessage()); }
+        try {
+            var exams = examRepo.findAllDesc();
+            for (var e : exams)
+                box.getItems().add(e.get("id") + " - " + e.get("academic_year")
+                    + " " + e.get("term") + " " + e.get("exam_series"));
+        } catch (Exception ex) { showAlert(ex.getMessage()); }
     }
 
     private Map<String, Double> getStreamAverages(Connection conn, long examId) throws SQLException {
@@ -532,7 +537,7 @@ public class DashboardForm {
     }
 
     private void showGradingScales() {
-        gradingScaleForm = new GradingScaleForm(db, settings);
+        gradingScaleForm = new GradingScaleForm(settings);
         setContent(gradingScaleForm.getView());
     }
 
@@ -542,7 +547,7 @@ public class DashboardForm {
     }
 
     private void showTeacherSubjects() {
-        teacherAssignmentForm = new TeacherAssignmentForm(db);
+        teacherAssignmentForm = new TeacherAssignmentForm();
         setContent(teacherAssignmentForm.getView());
     }
 
@@ -591,7 +596,7 @@ public class DashboardForm {
     }
 
     private void showRecycleBin() {
-        recycleBinForm = new RecycleBinForm(db, this::showDashboard);
+        recycleBinForm = new RecycleBinForm(this::showDashboard);
         setContent(recycleBinForm.getView());
     }
 
@@ -606,13 +611,7 @@ public class DashboardForm {
     }
 
     private int getExamMaxMarks(long examId) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "SELECT COALESCE(SUM(COALESCE(out_of, 100)), 0) FROM exam_subjects WHERE exam_id = ?")) {
-            ps.setLong(1, examId);
-            ResultSet rs = ps.executeQuery();
-            return rs.next() ? rs.getInt(1) : 0;
-        } catch (SQLException e) { return 0; }
+        return examRepo.getMaxMarks(examId);
     }
 
     private int count(String table) {

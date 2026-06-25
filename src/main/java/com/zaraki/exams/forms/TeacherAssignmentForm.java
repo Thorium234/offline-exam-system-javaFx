@@ -1,6 +1,9 @@
 package com.zaraki.exams.forms;
 
-import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.SubjectRepository;
+import com.zaraki.exams.repository.TeacherSubjectRepository;
+import com.zaraki.exams.repository.StreamRepository;
+import com.zaraki.exams.repository.UserRepository;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -11,12 +14,14 @@ import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
-import java.sql.*;
 import java.util.*;
 
 public class TeacherAssignmentForm {
 
-    private final DatabaseEngine db;
+    private final TeacherSubjectRepository tsRepo = new TeacherSubjectRepository();
+    private final UserRepository userRepo = new UserRepository();
+    private final SubjectRepository subjectRepo = new SubjectRepository();
+    private final StreamRepository streamRepo = new StreamRepository();
     private final ComboBox<String> teacherBox = new ComboBox<>();
     private final TableView<AssignmentRow> assignTable = new TableView<>();
     private final ObservableList<AssignmentRow> assignData = FXCollections.observableArrayList();
@@ -27,10 +32,6 @@ public class TeacherAssignmentForm {
     private final ComboBox<String> addStreamBox = new ComboBox<>();
 
     private long selectedUserId;
-
-    public TeacherAssignmentForm(DatabaseEngine db) {
-        this.db = db;
-    }
 
     public VBox getView() {
         VBox view = new VBox(15);
@@ -46,7 +47,6 @@ public class TeacherAssignmentForm {
         loadTeachers();
         teacherBox.setOnAction(e -> loadAssignments());
 
-        // Existing assignments table
         assignTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         assignTable.setItems(assignData);
         assignTable.setPrefHeight(250);
@@ -74,7 +74,6 @@ public class TeacherAssignmentForm {
         });
         assignTable.getColumns().addAll(cSubj, cForm, cStream, cAction);
 
-        // Add new assignment section
         Label addLabel = new Label("Add Assignment");
         addLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
 
@@ -93,19 +92,18 @@ public class TeacherAssignmentForm {
         addBtn.setOnAction(e -> addAssignment());
         addRow.getChildren().addAll(addSubjectBox, addFormBox, addStreamBox, addBtn);
 
-
-
         view.getChildren().addAll(header, info, teacherRow, assignTable, addLabel, addRow, statusLabel);
         return view;
     }
 
     private void loadTeachers() {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, username, full_name FROM users WHERE role = 'teacher' ORDER BY full_name")) {
-            while (rs.next())
-                teacherBox.getItems().add(rs.getLong("id") + ":" + rs.getString("username") + " | " + rs.getString("full_name"));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        List<Map<String, Object>> teachers = userRepo.findAll();
+        teacherBox.getItems().clear();
+        for (Map<String, Object> t : teachers) {
+            if ("teacher".equals(t.get("role"))) {
+                teacherBox.getItems().add(t.get("id") + ":" + t.get("username") + " | " + t.get("full_name"));
+            }
+        }
     }
 
     private void loadAssignments() {
@@ -113,22 +111,11 @@ public class TeacherAssignmentForm {
         if (teacherBox.getValue() == null) return;
         selectedUserId = Long.parseLong(teacherBox.getValue().split(":")[0]);
 
-        String sql = """
-            SELECT ts.id, s.subject_name, ts.form, ts.stream
-            FROM teacher_subjects ts
-            JOIN subjects s ON s.id = ts.subject_id
-            WHERE ts.user_id = ?
-            ORDER BY s.subject_name, ts.form, ts.stream
-            """;
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, selectedUserId);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next())
-                assignData.add(new AssignmentRow(rs.getLong("id"), rs.getString("subject_name"),
-                    rs.getInt("form"), rs.getString("stream")));
-            statusLabel.setText(assignData.size() + " assignment(s)");
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        List<Map<String, Object>> list = tsRepo.findByUserId(selectedUserId);
+        for (Map<String, Object> row : list)
+            assignData.add(new AssignmentRow((long) row.get("id"), (String) row.get("subject_name"),
+                (int) row.get("form"), (String) row.get("stream")));
+        statusLabel.setText(assignData.size() + " assignment(s)");
     }
 
     private void addAssignment() {
@@ -140,53 +127,38 @@ public class TeacherAssignmentForm {
 
         long subjectId = Long.parseLong(addSubjectBox.getValue().split(":")[0]);
 
-        try (PreparedStatement ps = db.getConnection().prepareStatement(
-                "INSERT OR IGNORE INTO teacher_subjects (user_id, subject_id, form, stream) VALUES (?,?,?,?)")) {
-            ps.setLong(1, selectedUserId);
-            ps.setLong(2, subjectId);
-            ps.setInt(3, addFormBox.getValue());
-            ps.setString(4, stream.trim());
-            int inserted = ps.executeUpdate();
-            if (inserted > 0) {
-                loadAssignments();
-                addSubjectBox.setValue(null);
-                addFormBox.setValue(null);
-                addStreamBox.setValue(null);
-            } else {
-                UIUtils.showError("Assignment already exists.");
-            }
-        } catch (SQLException e) { UIUtils.showError("Failed to add: " + e.getMessage()); }
+        try {
+            tsRepo.insert(selectedUserId, subjectId, addFormBox.getValue(), stream.trim());
+            loadAssignments();
+            addSubjectBox.setValue(null);
+            addFormBox.setValue(null);
+            addStreamBox.setValue(null);
+        } catch (Exception e) {
+            UIUtils.showError("Failed to add: " + e.getMessage());
+        }
     }
 
     private void removeAssignment(AssignmentRow row) {
         if (row == null) return;
-        try (PreparedStatement ps = db.getConnection().prepareStatement("DELETE FROM teacher_subjects WHERE id = ?")) {
-            ps.setLong(1, row.id);
-            ps.executeUpdate();
+        try {
+            tsRepo.deleteById(row.id);
             loadAssignments();
-        } catch (SQLException e) { UIUtils.showError("Failed to remove: " + e.getMessage()); }
+        } catch (Exception e) {
+            UIUtils.showError("Failed to remove: " + e.getMessage());
+        }
     }
 
     private void loadSubjects() {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, subject_name FROM subjects ORDER BY subject_name")) {
-            while (rs.next())
-                addSubjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_name"));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        List<Map<String, Object>> subjects = subjectRepo.findAllSimple();
+        addSubjectBox.getItems().clear();
+        for (Map<String, Object> s : subjects)
+            addSubjectBox.getItems().add(s.get("id") + ":" + s.get("subject_name"));
     }
 
     private void loadStreams() {
-        Set<String> streams = new TreeSet<>();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
-            while (rs.next()) streams.add(rs.getString("stream"));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        Set<String> streams = streamRepo.findAllNames();
         addStreamBox.setItems(FXCollections.observableArrayList(streams));
     }
-
-
 
     public static class AssignmentRow {
         private final long id;

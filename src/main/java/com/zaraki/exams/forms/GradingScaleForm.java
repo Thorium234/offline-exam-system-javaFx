@@ -2,7 +2,7 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.config.CurriculumSystem;
 import com.zaraki.exams.config.SettingsManager;
-import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.GradingScaleRepository;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -11,19 +11,18 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 
-import java.sql.*;
 
 public class GradingScaleForm {
 
-    private final DatabaseEngine db;
     private final SettingsManager settings;
+    private final GradingScaleRepository gradingRepo;
     private final TableView<ScaleRow> table;
     private final ObservableList<ScaleRow> data;
     private final ComboBox<String> subjectBox;
 
-    public GradingScaleForm(DatabaseEngine db, SettingsManager settings) {
-        this.db = db;
+    public GradingScaleForm(SettingsManager settings) {
         this.settings = settings;
+        this.gradingRepo = new GradingScaleRepository();
         this.table = new TableView<>();
         this.data = FXCollections.observableArrayList();
         this.subjectBox = new ComboBox<>();
@@ -37,18 +36,16 @@ public class GradingScaleForm {
         Label info = new Label("Active: " + curr.getDisplayName()
             + " | Leave Subject blank for global scale.");
 
-
         GridPane form = new GridPane();
         form.setHgap(10); form.setVgap(10);
 
         subjectBox.getItems().add("-- Global --");
         subjectBox.setValue("-- Global --");
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, subject_name FROM subjects ORDER BY subject_name")) {
-            while (rs.next())
-                subjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_name"));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        try {
+            var subjects = gradingRepo.findAllSubjectsForCombo();
+            for (var s : subjects)
+                subjectBox.getItems().add(s.get("id") + ":" + s.get("subject_name"));
+        } catch (Exception e) { UIUtils.showError(e.getMessage()); }
 
         TextField minField = new TextField(); minField.setPromptText("Min");
         TextField maxField = new TextField(); maxField.setPromptText("Max");
@@ -89,9 +86,7 @@ public class GradingScaleForm {
         table.setItems(data);
 
         addBtn.setOnAction(e -> {
-            try (Connection conn = db.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (?,?,?,?,?,?)")) {
+            try {
                 String minText = minField.getText().trim();
                 String maxText = maxField.getText().trim();
                 String grade = gradeField.getText().trim();
@@ -113,14 +108,9 @@ public class GradingScaleForm {
                     return;
                 }
                 String subj = subjectBox.getValue();
-                if (subj == null || subj.equals("-- Global --")) ps.setNull(1, Types.INTEGER);
-                else ps.setLong(1, Long.parseLong(subj.split(":")[0]));
-                ps.setDouble(2, min);
-                ps.setDouble(3, max);
-                ps.setString(4, grade);
-                ps.setInt(5, pts);
-                ps.setString(6, remarksField.getText().trim());
-                ps.executeUpdate();
+                Long subjectId = (subj == null || subj.equals("-- Global --")) ? null
+                    : Long.parseLong(subj.split(":")[0]);
+                gradingRepo.insert(subjectId, min, max, grade, pts, remarksField.getText().trim());
                 load();
                 minField.clear(); maxField.clear(); gradeField.clear(); pointsField.clear(); remarksField.clear();
             } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
@@ -134,31 +124,11 @@ public class GradingScaleForm {
 
     private void autoGenerate() {
         CurriculumSystem curr = settings.getCurriculum();
-        try (Connection conn = db.getConnection();
-             PreparedStatement del = conn.prepareStatement("DELETE FROM grading_scales WHERE subject_id IS NULL");
-             PreparedStatement ins = conn.prepareStatement(
-                 "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (NULL,?,?,?,?,?)")) {
-            conn.setAutoCommit(false);
-            del.executeUpdate();
-            try {
-                for (CurriculumSystem.PresetGrade pg : curr.getPresetGrades()) {
-                    ins.setDouble(1, pg.min());
-                    ins.setDouble(2, pg.max());
-                    ins.setString(3, pg.grade());
-                    ins.setInt(4, pg.points());
-                    ins.setString(5, pg.remarks());
-                    ins.addBatch();
-                }
-                ins.executeBatch();
-                conn.commit();
-            } catch (SQLException ex) {
-                conn.rollback();
-                throw ex;
-            } finally {
-                conn.setAutoCommit(true);
-            }
+        try {
+            gradingRepo.deleteGlobal();
+            gradingRepo.insertBatchGlobal(curr);
             load();
-            UIUtils.showError("Auto-generated " + curr.getPresetGrades().size() + " global grading scales for " + curr.getDisplayName());
+            UIUtils.showInfo("Auto-generated " + curr.getPresetGrades().size() + " global grading scales for " + curr.getDisplayName());
         } catch (Exception e) {
             UIUtils.showError("Error: " + e.getMessage());
         }
@@ -170,21 +140,17 @@ public class GradingScaleForm {
 
     private void load() {
         data.clear();
-        String sql = """
-            SELECT gs.id, gs.minimum_mark, gs.maximum_mark, gs.grade, gs.points, gs.remarks,
-                   COALESCE(sub.subject_name, '** Global **') AS subject_name
-            FROM grading_scales gs
-            LEFT JOIN subjects sub ON sub.id = gs.subject_id
-            ORDER BY gs.subject_id IS NULL DESC, gs.points DESC
-            """;
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(sql)) {
-            while (rs.next())
-                data.add(new ScaleRow(rs.getString("subject_name"), rs.getDouble("minimum_mark"),
-                    rs.getDouble("maximum_mark"), rs.getString("grade"),
-                    rs.getInt("points"), rs.getString("remarks")));
-        } catch (SQLException e) {
+        try {
+            var scales = gradingRepo.findAllWithSubject();
+            for (var s : scales)
+                data.add(new ScaleRow(
+                    (String) s.get("subject_name"),
+                    (Double) s.get("minimum_mark"),
+                    (Double) s.get("maximum_mark"),
+                    (String) s.get("grade"),
+                    (Integer) s.get("points"),
+                    (String) s.get("remarks")));
+        } catch (Exception e) {
             UIUtils.showError(e.getMessage());
         }
     }

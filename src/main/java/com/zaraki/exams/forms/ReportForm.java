@@ -3,6 +3,8 @@ package com.zaraki.exams.forms;
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.reporting.ReportCardGenerator;
+import com.zaraki.exams.repository.ExamRepository;
+import com.zaraki.exams.repository.StudentRepository;
 import com.zaraki.exams.service.ExamAnalysisService;
 import com.zaraki.exams.util.UIUtils;
 import javafx.application.Platform;
@@ -27,9 +29,12 @@ import java.util.List;
 public class ReportForm {
 
     private static final String PRIMARY = AppTheme.PRIMARY;
+    private static final int PAGE_SIZE = 20;
 
     private final DatabaseEngine db;
     private final ReportCardGenerator reportGenerator;
+    private final ExamRepository examRepo;
+    private final StudentRepository studentRepo;
     private final Stage stage;
 
     private final ComboBox<String> examBox = new ComboBox<>();
@@ -40,6 +45,12 @@ public class ReportForm {
     private long selectedExamId;
     private long foundStudentId = -1;
     private boolean studentFound = false;
+    private int currentPage = 0;
+    private int totalResults = 0;
+    private String lastQuery = "";
+    private Label pageLabel = new Label();
+    private Button prevPageBtn;
+    private Button nextPageBtn;
 
     private VBox previewBox;
     private Label statusLabel;
@@ -48,6 +59,8 @@ public class ReportForm {
         this.db = db;
         this.stage = stage;
         this.reportGenerator = new ReportCardGenerator();
+        this.examRepo = new ExamRepository();
+        this.studentRepo = new StudentRepository();
     }
 
     public VBox getView() {
@@ -60,11 +73,9 @@ public class ReportForm {
         UIUtils.loadStreams(streamBox);
         UIUtils.loadForms(formBox);
 
-        // ── Exam ──
         HBox examRow = new HBox(10, new Label("Exam:"), examBox);
         examBox.setPrefWidth(400);
 
-        // ── Single student section ──
         Label singleLabel = new Label("Single Student");
         singleLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
 
@@ -75,9 +86,16 @@ public class ReportForm {
         Button genOneBtn = new Button("Generate PDF");
         foundStudentLabel.setFont(Font.font("System", 12));
         foundStudentLabel.setTextFill(Color.web(PRIMARY));
-        searchRow.getChildren().addAll(searchField, searchBtn, genOneBtn);
 
-        // ── Bulk section ──
+        prevPageBtn = new Button("\u25C0");
+        prevPageBtn.setTooltip(new Tooltip("Previous page"));
+        prevPageBtn.setOnAction(e -> { if (currentPage > 0) { currentPage--; searchStudent(currentPage); } });
+        nextPageBtn = new Button("\u25B6");
+        nextPageBtn.setTooltip(new Tooltip("Next page"));
+        nextPageBtn.setOnAction(e -> { if ((currentPage + 1) * PAGE_SIZE < totalResults) { currentPage++; searchStudent(currentPage); } });
+
+        searchRow.getChildren().addAll(searchField, searchBtn, prevPageBtn, pageLabel, nextPageBtn, genOneBtn);
+
         Separator sep = new Separator();
         Label bulkLabel = new Label("Generate for Stream / Form (multi-page PDF)");
         bulkLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
@@ -94,7 +112,6 @@ public class ReportForm {
 
         statusLabel = UIUtils.makeStatusLabel();
 
-        // Preview
         previewBox = new VBox(10);
         previewBox.setPadding(new Insets(15));
         previewBox.setStyle("-fx-background-color: white; -fx-background-radius: 8; "
@@ -111,15 +128,13 @@ public class ReportForm {
             singleLabel, searchRow, foundStudentLabel,
             sep, bulkLabel, bulkRow, spinner, statusLabel, previewScroll);
 
-        // ── Search student ──
-        searchBtn.setOnAction(e -> searchStudent());
-        searchField.setOnAction(e -> searchStudent());
+        searchBtn.setOnAction(e -> { currentPage = 0; searchStudent(0); });
+        searchField.setOnAction(e -> { currentPage = 0; searchStudent(0); });
 
-        // ── Generate single PDF ──
         genOneBtn.setOnAction(e -> {
             if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            if (!isExamReleased(examId)) { UIUtils.showError("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
+            if (!examRepo.isReleased(examId)) { UIUtils.showError("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
             if (!studentFound) { UIUtils.showError("Search and select a student first."); return; }
 
             FileChooser fc = new FileChooser();
@@ -142,11 +157,10 @@ public class ReportForm {
             new Thread(task).start();
         });
 
-        // ── Search result click → show preview ──
         foundStudentLabel.setOnMouseClicked(e -> {
             if (!studentFound || examBox.getValue() == null) return;
             selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            if (!isExamReleased(selectedExamId)) { UIUtils.showError("Exam not released by admin. Preview unavailable."); return; }
+            if (!examRepo.isReleased(selectedExamId)) { UIUtils.showError("Exam not released by admin. Preview unavailable."); return; }
             spinner.setVisible(true);
             statusLabel.setText("Loading preview...");
             Platform.runLater(() -> {
@@ -157,11 +171,10 @@ public class ReportForm {
             });
         });
 
-        // ── Generate bulk PDF ──
         bulkGenBtn.setOnAction(e -> {
             if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
             long examId = Long.parseLong(examBox.getValue().split(" - ")[0]);
-            if (!isExamReleased(examId)) { UIUtils.showError("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
+            if (!examRepo.isReleased(examId)) { UIUtils.showError("This exam has not been released by the admin. Reports cannot be generated yet."); return; }
             String groupBy, groupValue;
             if (streamBox.getValue() != null && !streamBox.getValue().isBlank()) {
                 groupBy = "stream"; groupValue = streamBox.getValue();
@@ -191,52 +204,56 @@ public class ReportForm {
         return view;
     }
 
-    private void searchStudent() {
+    private void searchStudent(int page) {
         String q = searchField.getText().trim();
         if (q.isEmpty()) { UIUtils.showError("Enter a name or admission number."); return; }
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "SELECT id, admission_number, full_name, form, stream FROM students WHERE deallocated = 0 AND (full_name LIKE ? OR admission_number LIKE ?) LIMIT 20")) {
-            String like = "%" + q + "%";
-            ps.setString(1, like);
-            ps.setString(2, like);
-            ResultSet rs = ps.executeQuery();
+        lastQuery = q;
+        int offset = page * PAGE_SIZE;
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() {
+                var students = studentRepo.search(q, PAGE_SIZE, offset);
+                int total = studentRepo.searchCount(q);
+                Platform.runLater(() -> {
+                    totalResults = total;
+                    if (students.isEmpty()) {
+                        foundStudentLabel.setText("No student found.");
+                        studentFound = false;
+                        pageLabel.setText("");
+                        return;
+                    }
 
-            if (!rs.next()) {
-                foundStudentLabel.setText("No student found.");
-                studentFound = false;
-                return;
+                    var first = students.get(0);
+                    long id = (Long) first.get("id");
+                    String adm = (String) first.get("admission_number");
+                    String name = (String) first.get("full_name");
+                    int form = (Integer) first.get("form");
+                    String stream = (String) first.get("stream");
+
+                    if (students.size() == 1) {
+                        foundStudentLabel.setText(adm + " - " + name + " (Form " + form + " " + stream + ") \u2014 click to preview");
+                        foundStudentId = id;
+                        studentFound = true;
+                    } else {
+                        StringBuilder sb = new StringBuilder("Page " + (page + 1) + ":\n");
+                        for (var s : students) {
+                            sb.append(s.get("id")).append(" - ").append(s.get("admission_number")).append(" - ").append(s.get("full_name")).append(" (Form ").append(s.get("form")).append(" ").append(s.get("stream")).append(")\n");
+                        }
+                        foundStudentLabel.setText(sb.toString());
+                        foundStudentId = id;
+                        studentFound = true;
+                    }
+
+                    int totalPages = (int) Math.ceil((double) total / PAGE_SIZE);
+                    pageLabel.setText((page + 1) + "/" + totalPages);
+                    prevPageBtn.setDisable(page <= 0);
+                    nextPageBtn.setDisable(page >= totalPages - 1);
+                });
+                return null;
             }
-
-            long id = rs.getLong("id");
-            String adm = rs.getString("admission_number");
-            String name = rs.getString("full_name");
-            int form = rs.getInt("form");
-            String stream = rs.getString("stream");
-
-            boolean multiple = false;
-            if (rs.next()) {
-                multiple = true;
-                StringBuilder sb = new StringBuilder("Multiple found, showing first:\n");
-                sb.append(id).append(" - ").append(adm).append(" - ").append(name).append(" (Form ").append(form).append(" ").append(stream).append(")\n");
-                do {
-                    sb.append(rs.getLong("id")).append(" - ").append(rs.getString("admission_number")).append(" - ").append(rs.getString("full_name")).append(" (Form ").append(rs.getInt("form")).append(" ").append(rs.getString("stream")).append(")\n");
-                } while (rs.next());
-                foundStudentLabel.setText(sb.toString());
-            }
-
-            if (!multiple) {
-                foundStudentLabel.setText(adm + " - " + name + " (Form " + form + " " + stream + ") — click to preview");
-                foundStudentId = id;
-                studentFound = true;
-            } else {
-                foundStudentId = id;
-                studentFound = true;
-            }
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        };
+        task.setOnFailed(ev -> UIUtils.showError(task.getException().getMessage()));
+        new Thread(task).start();
     }
-
-    // ─────────── Preview ───────────
 
     private void loadIndividualPreview(long examId, long studentId) {
         previewBox.getChildren().clear();
@@ -256,24 +273,17 @@ public class ReportForm {
 
         previewBox.getChildren().addAll(title, schoolLabel, new Separator());
 
-        String examSql = "SELECT academic_year, term, exam_series FROM exams WHERE id = ?";
-        String studentSql = "SELECT admission_number, full_name, form, stream FROM students WHERE id = ?";
-        try (Connection conn = db.getConnection();
-             PreparedStatement eps = conn.prepareStatement(examSql);
-             PreparedStatement sps = conn.prepareStatement(studentSql)) {
+        try {
+            var exam = examRepo.findById(examId);
+            if (exam != null)
+                previewBox.getChildren().add(new Label("Exam: " + exam.get("academic_year") + " - " + exam.get("term") + " - " + exam.get("exam_series")));
 
-            eps.setLong(1, examId);
-            ResultSet er = eps.executeQuery();
-            if (er.next())
-                previewBox.getChildren().add(new Label("Exam: " + er.getString("academic_year") + " - " + er.getString("term") + " - " + er.getString("exam_series")));
-
-            sps.setLong(1, studentId);
-            ResultSet sr = sps.executeQuery();
-            if (sr.next()) {
-                previewBox.getChildren().add(new Label("Student: " + sr.getString("admission_number") + " - " + sr.getString("full_name")));
-                previewBox.getChildren().add(new Label("Class: Form " + sr.getInt("form") + " - " + sr.getString("stream")));
+            var student = studentRepo.findById(studentId);
+            if (student != null) {
+                previewBox.getChildren().add(new Label("Student: " + student.get("admission_number") + " - " + student.get("full_name")));
+                previewBox.getChildren().add(new Label("Class: Form " + student.get("form") + " - " + student.get("stream")));
             }
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        } catch (Exception e) { UIUtils.showError(e.getMessage()); }
 
         previewBox.getChildren().add(new Separator());
 
@@ -391,11 +401,5 @@ public class ReportForm {
         previewBox.getChildren().add(chartBox);
 
         previewBox.setVisible(true);
-    }
-
-    // ─────────── Helpers ───────────
-
-    private static boolean isExamReleased(long examId) {
-        return PublishForm.isExamReleased(examId);
     }
 }

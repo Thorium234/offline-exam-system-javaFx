@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.SubjectRepository;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -8,16 +9,14 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 
-import java.sql.*;
-
 public class SubjectForm {
 
-    private final DatabaseEngine db;
+    private final SubjectRepository subjectRepo;
     private final TableView<SubjectRow> table = new TableView<>();
     private final ObservableList<SubjectRow> data = FXCollections.observableArrayList();
 
     public SubjectForm(DatabaseEngine db) {
-        this.db = db;
+        this.subjectRepo = new SubjectRepository();
     }
 
     public VBox getView() {
@@ -79,14 +78,8 @@ public class SubjectForm {
                 UIUtils.showError("Select a grouping (Compulsory or Elective).");
                 return;
             }
-            try (Connection conn = db.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO subjects (subject_code, subject_name, department, grouping) VALUES (?,?,?,?)")) {
-                ps.setString(1, code);
-                ps.setString(2, name);
-                ps.setString(3, dept);
-                ps.setString(4, grp);
-                ps.executeUpdate();
+            try {
+                subjectRepo.insert(code, name, dept, grp);
                 load();
                 codeField.clear(); nameField.clear(); deptField.clear(); grpBox.setValue(null);
             } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
@@ -101,30 +94,26 @@ public class SubjectForm {
             "Delete subject '" + row.code + " - " + row.name + "'?",
             ButtonType.YES, ButtonType.NO);
         if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("DELETE FROM subjects WHERE subject_code = ?")) {
-            ps.setString(1, row.code);
-            int rows = ps.executeUpdate();
-            if (rows > 0) {
-                load();
-                UIUtils.showInfo("Deleted " + row.code);
-            } else {
-                UIUtils.showError("Subject not found or cannot be deleted (may have existing marks/assignments).");
-            }
-        } catch (SQLException ex) {
+        try {
+            subjectRepo.deleteByCode(row.code);
+            load();
+            UIUtils.showInfo("Deleted " + row.code);
+        } catch (Exception ex) {
             UIUtils.showError("Cannot delete: " + ex.getMessage());
         }
     }
 
     private void load() {
         data.clear();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT subject_code, subject_name, department, grouping FROM subjects ORDER BY subject_name")) {
-            while (rs.next())
-                data.add(new SubjectRow(rs.getString("subject_code"), rs.getString("subject_name"),
-                    rs.getString("department"), rs.getString("grouping")));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        try {
+            var subjects = subjectRepo.findAll();
+            for (var s : subjects)
+                data.add(new SubjectRow(
+                    (String) s.get("subject_code"),
+                    (String) s.get("subject_name"),
+                    (String) s.get("department"),
+                    (String) s.get("grouping")));
+        } catch (Exception e) { UIUtils.showError(e.getMessage()); }
     }
 
     public static class SubjectRow {

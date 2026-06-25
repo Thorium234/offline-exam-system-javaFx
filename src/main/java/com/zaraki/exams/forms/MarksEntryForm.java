@@ -1,6 +1,10 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.ExamRepository;
+import com.zaraki.exams.repository.StudentRepository;
+import com.zaraki.exams.repository.SubjectRepository;
+import com.zaraki.exams.repository.TeacherSubjectRepository;
 import com.zaraki.exams.service.ExamAnalysisService;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
@@ -23,6 +27,10 @@ public class MarksEntryForm {
 
     private final DatabaseEngine db;
     private final ExamAnalysisService analysisService;
+    private final ExamRepository examRepo;
+    private final StudentRepository studentRepo;
+    private final SubjectRepository subjectRepo;
+    private final TeacherSubjectRepository teacherSubjectRepo;
     private final long loggedInUserId;
     private final boolean isTeacher;
 
@@ -42,13 +50,16 @@ public class MarksEntryForm {
     private int selectedOutOf;
     private String selectedSubjectName;
 
-    // Teacher-mode nodes
     private HBox teacherSubjectRow;
     private Button teacherLoadBtn;
 
     public MarksEntryForm(DatabaseEngine db, long loggedInUserId, String loggedInRole) {
         this.db = db;
         this.analysisService = new ExamAnalysisService();
+        this.examRepo = new ExamRepository();
+        this.studentRepo = new StudentRepository();
+        this.subjectRepo = new SubjectRepository();
+        this.teacherSubjectRepo = new TeacherSubjectRepository();
         this.loggedInUserId = loggedInUserId;
         this.isTeacher = "teacher".equals(loggedInRole);
     }
@@ -69,7 +80,6 @@ public class MarksEntryForm {
         loadExams();
         examRow.getChildren().addAll(new Label("Exam:"), examBox);
 
-        // Teacher-mode: Subject + Form + Stream (filtered)
         teacherSubjectRow = new HBox(10);
         subjectBox = new ComboBox<>();
         subjectBox.setPromptText("Select Subject");
@@ -90,7 +100,6 @@ public class MarksEntryForm {
 
         classRow.getChildren().addAll(new Label("Form:"), formBox, new Label("Stream:"), streamBox);
 
-        // Admin-mode: shared classRow + load subjects button
         Button loadBtn = new Button("Load Subjects");
         loadBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white;");
 
@@ -243,20 +252,11 @@ public class MarksEntryForm {
 
     private void loadTeacherSubjects() {
         subjectBox.getItems().clear();
-        String sql = """
-            SELECT DISTINCT s.id, s.subject_code, s.subject_name
-            FROM teacher_subjects ts
-            JOIN subjects s ON s.id = ts.subject_id
-            WHERE ts.user_id = ?
-            ORDER BY s.subject_name
-            """;
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, loggedInUserId);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next())
-                subjectBox.getItems().add(rs.getLong("id") + ":" + rs.getString("subject_code") + " - " + rs.getString("subject_name"));
-        } catch (SQLException ex) { UIUtils.showError("Failed to load subjects: " + ex.getMessage()); }
+        try {
+            var subjects = subjectRepo.findByTeacher(loggedInUserId);
+            for (var s : subjects)
+                subjectBox.getItems().add(s.get("id") + ":" + s.get("subject_code") + " - " + s.get("subject_name"));
+        } catch (Exception ex) { UIUtils.showError("Failed to load subjects: " + ex.getMessage()); }
     }
 
     private void loadTeacherForms() {
@@ -266,15 +266,7 @@ public class MarksEntryForm {
         selectedSubjectId = subjectId;
         selectedSubjectName = subjectBox.getValue().split(" - ", 2)[1];
 
-        Set<Integer> forms = new TreeSet<>();
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "SELECT DISTINCT form FROM teacher_subjects WHERE user_id = ? AND subject_id = ? ORDER BY form")) {
-            ps.setLong(1, loggedInUserId);
-            ps.setLong(2, subjectId);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) forms.add(rs.getInt("form"));
-        } catch (SQLException ex) { UIUtils.showError("Failed to load forms: " + ex.getMessage()); }
+        var forms = teacherSubjectRepo.findFormsByTeacherAndSubject(loggedInUserId, subjectId);
         formBox.setItems(FXCollections.observableArrayList(forms));
     }
 
@@ -283,16 +275,7 @@ public class MarksEntryForm {
         int form = formBox.getValue();
         long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
 
-        Set<String> streams = new TreeSet<>();
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "SELECT stream FROM teacher_subjects WHERE user_id = ? AND subject_id = ? AND form = ? ORDER BY stream")) {
-            ps.setLong(1, loggedInUserId);
-            ps.setLong(2, subjectId);
-            ps.setInt(3, form);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) streams.add(rs.getString("stream"));
-        } catch (SQLException ex) { UIUtils.showError("Failed to load streams: " + ex.getMessage()); }
+        var streams = teacherSubjectRepo.findStreamsByTeacherAndSubjectAndForm(loggedInUserId, subjectId, form);
 
         if (streams.size() == 1) {
             streamBox.setItems(FXCollections.observableArrayList(streams));
@@ -344,26 +327,25 @@ public class MarksEntryForm {
 
         int form = formBox.getValue();
         String stream = streamBox.getValue();
-        int studentCount = countStudents(form, stream);
+        int studentCount = studentRepo.countByFormStream(form, stream);
         if (studentCount == 0) {
             UIUtils.showError("No students found in Form " + form + " - " + stream);
             return;
         }
 
-        Map<String, Object[]> subjects = getSubjectsWithMarksCount();
+        var subjects = subjectRepo.findByFormStreamWithMarksCount(selectedExamId, form, stream);
         if (subjects.isEmpty()) {
             UIUtils.showError("No subjects defined. Add subjects first.");
             return;
         }
 
-        for (var entry : subjects.entrySet()) {
-            String name = entry.getKey();
-            Object[] info = entry.getValue();
-            long subjId = (Long) info[0];
-            String code = (String) info[1];
-            String dept = (String) info[2];
-            int outOf = (Integer) info[3];
-            int markCount = (Integer) info[4];
+        for (var entry : subjects) {
+            String name = (String) entry.get("subject_name");
+            long subjId = (Long) entry.get("id");
+            String code = (String) entry.get("subject_code");
+            String dept = (String) entry.get("department");
+            int outOf = (Integer) entry.get("out_of");
+            int markCount = (Integer) entry.get("mark_count");
 
             VBox card = new VBox(4);
             card.setPrefSize(180, 90);
@@ -409,7 +391,7 @@ public class MarksEntryForm {
     private void loadStudents(long subjectId, int outOf) {
         selectedSubjectId = subjectId;
         selectedOutOf = outOf;
-        selectedSubjectName = getSubjectName(subjectId);
+        selectedSubjectName = subjectRepo.getName(subjectId);
         selectedSubjectLabel.setText(selectedSubjectName);
         studentEntryArea.setVisible(true);
         subjectCardsArea.setVisible(false);
@@ -417,7 +399,6 @@ public class MarksEntryForm {
         int form = formBox.getValue();
         String stream = streamBox.getValue();
 
-        ObservableList<StudentMarkRow> rows = FXCollections.observableArrayList();
         double classAvg = 0;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -428,50 +409,36 @@ public class MarksEntryForm {
             if (rs.next()) classAvg = rs.getDouble(1);
         } catch (SQLException e) { /* ignore */ }
 
-        String sql = """
-            SELECT s.id, s.admission_number, s.full_name,
-                   m.score, m.grade_achieved, m.points_achieved,
-                   m.status, m.teacher_comment, m.deviation
-            FROM students s
-            LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? AND m.subject_id = ?
-            WHERE s.form = ? AND s.stream = ? AND s.deallocated = 0
-            ORDER BY s.full_name
-            """;
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, selectedExamId);
-            ps.setLong(2, subjectId);
-            ps.setInt(3, form);
-            ps.setString(4, stream);
-            ResultSet rs = ps.executeQuery();
+        ObservableList<StudentMarkRow> rows = FXCollections.observableArrayList();
+        try {
+            var students = studentRepo.findByFormStreamWithMarks(selectedExamId, subjectId, form, stream);
             int pos = 0;
             double finalClassAvg = classAvg;
-            while (rs.next()) {
+            for (var s : students) {
                 pos++;
-                Double scoreVal = rs.getObject("score") != null ? rs.getDouble("score") : null;
-                String savedStatus = rs.getString("status");
-                String status = savedStatus != null ? savedStatus
-                    : (scoreVal != null ? "P" : "");
-                String comment = rs.getString("teacher_comment");
+                Double scoreVal = s.get("score") != null ? ((Number) s.get("score")).doubleValue() : null;
+                String savedStatus = (String) s.get("status");
+                String status = savedStatus != null ? savedStatus : (scoreVal != null ? "P" : "");
+                String comment = (String) s.get("teacher_comment");
                 Double deviation = null;
                 if (scoreVal != null) {
-                    deviation = rs.getObject("deviation") != null ? rs.getDouble("deviation")
+                    deviation = s.get("deviation") != null ? ((Number) s.get("deviation")).doubleValue()
                         : (finalClassAvg > 0 ? scoreVal - finalClassAvg : null);
                 }
                 rows.add(new StudentMarkRow(
                     pos,
-                    rs.getLong("id"),
-                    rs.getString("admission_number"),
-                    rs.getString("full_name"),
+                    (Long) s.get("id"),
+                    (String) s.get("admission_number"),
+                    (String) s.get("full_name"),
                     scoreVal,
-                    rs.getString("grade_achieved"),
-                    rs.getObject("points_achieved") != null ? rs.getInt("points_achieved") : null,
+                    (String) s.get("grade_achieved"),
+                    s.get("points_achieved") != null ? ((Number) s.get("points_achieved")).intValue() : null,
                     status,
                     comment != null ? comment : "",
                     deviation != null ? String.format("%+.1f", deviation) : ""
                 ));
             }
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
+        } catch (Exception e) { UIUtils.showError(e.getMessage()); }
         studentTable.setItems(rows);
         statusLabel.setText(selectedSubjectName + " | " + rows.size() + " students");
     }
@@ -539,57 +506,12 @@ public class MarksEntryForm {
     }
 
     private void loadExams() {
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id, academic_year, term, exam_series FROM exams ORDER BY id DESC")) {
-            while (rs.next())
-                examBox.getItems().add(rs.getLong("id") + " - " + rs.getString("academic_year")
-                    + " " + rs.getString("term") + " " + rs.getString("exam_series"));
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
-    }
-
-    private Map<String, Object[]> getSubjectsWithMarksCount() {
-        Map<String, Object[]> map = new LinkedHashMap<>();
-        int form = formBox.getValue();
-        String stream = streamBox.getValue();
-        String sql = """
-            SELECT sub.id, sub.subject_code, sub.subject_name, sub.department,
-                   COALESCE((SELECT es.out_of FROM exam_subjects es WHERE es.exam_id = ? AND es.subject_id = sub.id), 100) AS out_of,
-                   (SELECT COUNT(*) FROM marks m WHERE m.exam_id = ? AND m.subject_id = sub.id) AS mark_count
-            FROM subjects sub
-            WHERE sub.id IN (SELECT ss.subject_id FROM stream_subjects ss WHERE ss.form = ? AND ss.stream = ?)
-               OR NOT EXISTS (SELECT 1 FROM stream_subjects WHERE form = ? AND stream = ?)
-            ORDER BY sub.subject_name
-            """;
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, selectedExamId);
-            ps.setLong(2, selectedExamId);
-            ps.setInt(3, form);
-            ps.setString(4, stream);
-            ps.setInt(5, form);
-            ps.setString(6, stream);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next())
-                map.put(rs.getString("subject_name"), new Object[]{
-                    rs.getLong("id"),
-                    rs.getString("subject_code"),
-                    rs.getString("department"),
-                    rs.getInt("out_of"),
-                    rs.getInt("mark_count")
-                });
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
-        return map;
-    }
-
-    private String getSubjectName(long subjectId) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT subject_name FROM subjects WHERE id = ?")) {
-            ps.setLong(1, subjectId);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getString("subject_name");
-        } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
-        return "Subject";
+        try {
+            var exams = examRepo.findAllDesc();
+            for (var e : exams)
+                examBox.getItems().add(e.get("id") + " - " + e.get("academic_year")
+                    + " " + e.get("term") + " " + e.get("exam_series"));
+        } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
     }
 
     private double getClassAverage(long examId, long subjectId) {
@@ -600,15 +522,6 @@ public class MarksEntryForm {
             ps.setLong(2, subjectId);
             ResultSet rs = ps.executeQuery();
             return rs.next() ? rs.getDouble(1) : 0;
-        } catch (SQLException e) { return 0; }
-    }
-
-    private int countStudents(int form, String stream) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM students WHERE form = ? AND stream = ? AND deallocated = 0")) {
-            ps.setInt(1, form); ps.setString(2, stream);
-            ResultSet rs = ps.executeQuery();
-            return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException e) { return 0; }
     }
 

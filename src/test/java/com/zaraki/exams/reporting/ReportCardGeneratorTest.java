@@ -1,5 +1,6 @@
 package com.zaraki.exams.reporting;
 
+import com.zaraki.exams.TestDbConfig;
 import com.zaraki.exams.database.DatabaseEngine;
 import org.junit.jupiter.api.*;
 import java.io.File;
@@ -14,22 +15,13 @@ class ReportCardGeneratorTest {
     private static long examId;
     private static long studentId;
     private static long subjectId;
-    private static long secondStudentId;
 
     @BeforeAll
     static void setup() throws SQLException {
+        TestDbConfig.init();
+        TestDbConfig.cleanAllTables();
         try (Connection conn = db.getConnection(); Statement st = conn.createStatement()) {
             st.execute("PRAGMA foreign_keys = OFF");
-
-            st.execute("DELETE FROM marks");
-            st.execute("DELETE FROM exam_subjects");
-            st.execute("DELETE FROM exam_subjects");
-            st.execute("DELETE FROM exams");
-            st.execute("DELETE FROM student_subjects");
-            st.execute("DELETE FROM stream_subjects");
-            st.execute("DELETE FROM subjects");
-            st.execute("DELETE FROM grading_scales");
-            st.execute("DELETE FROM students");
 
             st.execute("INSERT INTO subjects (id, subject_code, subject_name, department, grouping) VALUES (1, 'MATH', 'Mathematics', 'Mathematics', 'Compulsory')");
             st.execute("INSERT INTO subjects (id, subject_code, subject_name, department, grouping) VALUES (2, 'ENG', 'English', 'Languages', 'Compulsory')");
@@ -38,7 +30,6 @@ class ReportCardGeneratorTest {
             st.execute("INSERT INTO students (id, admission_number, full_name, form, stream) VALUES (1, '1001', 'Test Student', 1, 'East')");
             st.execute("INSERT INTO students (id, admission_number, full_name, form, stream) VALUES (2, '1002', 'Second Student', 1, 'East')");
             studentId = 1;
-            secondStudentId = 2;
 
             st.execute("INSERT INTO exams (id, academic_year, term, exam_series, released) VALUES (1, '2026', 'Term 1', 'End Term', 1)");
             st.execute("INSERT INTO exams (id, academic_year, term, exam_series, released) VALUES (2, '2026', 'Term 1', 'Mid Term', 1)");
@@ -58,7 +49,6 @@ class ReportCardGeneratorTest {
             st.execute("INSERT INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (1, 1, 2, 70, 'B', 10)");
             st.execute("INSERT INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (2, 1, 1, 75, 'B', 10)");
             st.execute("INSERT INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (2, 1, 2, 65, 'B', 10)");
-
             st.execute("INSERT INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (1, 2, 1, 60, 'B', 10)");
             st.execute("INSERT INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (1, 2, 2, 50, 'C', 8)");
 
@@ -88,15 +78,12 @@ class ReportCardGeneratorTest {
 
     @Test
     @Order(3)
-    void generateStudentReport_withSingleMark_doesNotThrow() {
+    void generateStudentReport_withNoMarks_doesNotThrow() throws SQLException {
+        try (Connection conn = db.getConnection(); Statement st = conn.createStatement()) {
+            st.execute("INSERT OR IGNORE INTO students (id, admission_number, full_name, form, stream) VALUES (99, '9999', 'No Marks Student', 2, 'West')");
+        }
         ReportCardGenerator gen = new ReportCardGenerator();
         Path output = new File("target/test_report_empty.pdf").toPath();
-        try (Connection conn = db.getConnection(); Statement st = conn.createStatement()) {
-            st.execute("PRAGMA foreign_keys = OFF");
-            st.execute("INSERT INTO students (id, admission_number, full_name, form, stream) VALUES (99, '9999', 'No Marks Student', 2, 'West')");
-            st.execute("INSERT INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved) VALUES (1, 99, 1, 0, 'D', 4)");
-            st.execute("PRAGMA foreign_keys = ON");
-        } catch (SQLException e) { throw new RuntimeException(e); }
         gen.generateStudentReport(examId, 99, output);
         assertTrue(output.toFile().exists());
     }

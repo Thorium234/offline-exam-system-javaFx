@@ -2,6 +2,7 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
+import static com.zaraki.exams.forms.AppTheme.*;
 import com.zaraki.exams.util.UIUtils;
 import com.zaraki.exams.forms.PublishForm;
 import com.zaraki.exams.service.ExamAnalysisService;
@@ -29,10 +30,6 @@ import java.util.*;
 
 public class AnalysisForm {
 
-    private static final String PRIMARY = "#c62828";
-    private static final String RED = "#c62828";
-    private static final String GREEN = "#2e7d32";
-    private static final String WHITE_BG = "#f5f5f5";
     private static final String[] CHART_COLORS = {RED, GREEN, WHITE_BG};
 
     private final DatabaseEngine db;
@@ -64,6 +61,14 @@ public class AnalysisForm {
         Label header = UIUtils.makeHeader("Exam Analysis");
 
         UIUtils.loadExams(examBox);
+
+        if (examBox.getItems().isEmpty()) {
+            Label empty = new Label("No exams found. Create an exam and add marks to view analysis.");
+            empty.setFont(Font.font("System", 14));
+            empty.setTextFill(Color.gray(0.5));
+            view.getChildren().addAll(header, empty);
+            return view;
+        }
 
         Button autoGradeBtn = new Button("Auto-Grade All");
         Button rankBtn = new Button("Compute Rankings");

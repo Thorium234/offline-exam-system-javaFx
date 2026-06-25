@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.repository.StreamRepository;
 import com.zaraki.exams.util.UIUtils;
 import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.collections.FXCollections;
@@ -11,13 +12,12 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 
-import java.sql.*;
 import java.util.Set;
 import java.util.TreeSet;
 
 public class StreamManagementForm {
 
-    private final DatabaseEngine db;
+    private final StreamRepository streamRepo;
     private final TableView<StreamRow> table = new TableView<>();
     private final ObservableList<StreamRow> data = FXCollections.observableArrayList();
     private final ComboBox<Integer> formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
@@ -26,7 +26,7 @@ public class StreamManagementForm {
     private Label statusLabel;
 
     public StreamManagementForm(DatabaseEngine db) {
-        this.db = db;
+        this.streamRepo = new StreamRepository();
     }
 
     public Node getView() {
@@ -89,21 +89,13 @@ public class StreamManagementForm {
             if (formBox.getValue() == null) { UIUtils.showError("Select a form."); return; }
             String stream = streamBox.getValue();
             if (stream == null || stream.isBlank()) { UIUtils.showError("Enter a stream name."); return; }
-            try (Connection conn = db.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(
-                     "INSERT OR IGNORE INTO streams (form, stream) VALUES (?, ?)")) {
-                ps.setInt(1, formBox.getValue());
-                ps.setString(2, stream.trim());
-                int rows = ps.executeUpdate();
-                if (rows > 0) {
-                    loadData();
-                    statusLabel.setText("Added Form " + formBox.getValue() + " " + stream.trim());
-                } else {
-                    UIUtils.showError("Stream already exists.");
-                }
+            try {
+                streamRepo.insert(formBox.getValue(), stream.trim());
+                loadData();
+                statusLabel.setText("Added Form " + formBox.getValue() + " " + stream.trim());
                 formBox.setValue(null);
                 streamBox.setValue(null);
-            } catch (SQLException ex) { UIUtils.showError("Error: " + ex.getMessage()); }
+            } catch (Exception ex) { UIUtils.showError("Error: " + ex.getMessage()); }
         });
 
         deleteBtn.setOnAction(e -> {
@@ -114,20 +106,12 @@ public class StreamManagementForm {
                 + sel.studentCount + " student(s) will be moved to stream 'General'.",
                 ButtonType.YES, ButtonType.NO);
             if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
-            try (Connection conn = db.getConnection();
-                 PreparedStatement delStream = conn.prepareStatement(
-                     "DELETE FROM streams WHERE form = ? AND stream = ?");
-                 PreparedStatement updateStudents = conn.prepareStatement(
-                     "UPDATE students SET stream = 'General' WHERE form = ? AND stream = ?")) {
-                updateStudents.setInt(1, sel.form);
-                updateStudents.setString(2, sel.streamName);
-                updateStudents.executeUpdate();
-                delStream.setInt(1, sel.form);
-                delStream.setString(2, sel.streamName);
-                delStream.executeUpdate();
+            try {
+                streamRepo.updateStudentsStreamToGeneral(sel.form, sel.streamName);
+                streamRepo.delete(sel.form, sel.streamName);
                 loadData();
                 statusLabel.setText("Deleted " + sel.form + " " + sel.streamName);
-            } catch (SQLException ex) { UIUtils.showError("Error: " + ex.getMessage()); }
+            } catch (Exception ex) { UIUtils.showError("Error: " + ex.getMessage()); }
         });
 
         refreshBtn.setOnAction(e -> loadData());
@@ -136,30 +120,17 @@ public class StreamManagementForm {
     }
 
     private void loadStreamNames() {
-        Set<String> names = new TreeSet<>();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
-            while (rs.next()) names.add(rs.getString("stream"));
-        } catch (SQLException ignored) {}
+        Set<String> names = streamRepo.findAllNames();
         streamBox.setItems(FXCollections.observableArrayList(names));
     }
 
     private void loadData() {
         data.clear();
-        try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(
-                 "SELECT st.form, st.stream, "
-                 + "(SELECT COUNT(*) FROM students s WHERE s.form = st.form AND s.stream = st.stream AND s.deallocated = 0) AS cnt "
-                 + "FROM streams st ORDER BY st.form, st.stream")) {
-            while (rs.next()) {
-                data.add(new StreamRow(
-                    rs.getInt("form"),
-                    rs.getString("stream"),
-                    rs.getInt("cnt")));
-            }
-        } catch (SQLException e) { UIUtils.showError("Error: " + e.getMessage()); }
+        try {
+            var streams = streamRepo.findAllWithStudentCount();
+            for (var s : streams)
+                data.add(new StreamRow((int) s.get("form"), (String) s.get("stream"), (int) s.get("cnt")));
+        } catch (Exception e) { UIUtils.showError("Error: " + e.getMessage()); }
         table.setItems(data);
         statusLabel.setText(data.size() + " stream(s)");
     }

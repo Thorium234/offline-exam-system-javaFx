@@ -1,9 +1,16 @@
 package com.zaraki.exams.database;
 
-import org.junit.jupiter.api.Test;
+import com.zaraki.exams.TestDbConfig;
+import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class DatabaseEngineTest {
+
+    @BeforeAll
+    static void setup() {
+        TestDbConfig.init();
+    }
 
     @Test
     void getInstance_returnsSingleton() {
