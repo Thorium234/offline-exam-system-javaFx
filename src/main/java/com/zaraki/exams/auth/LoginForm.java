@@ -5,6 +5,8 @@ import com.zaraki.exams.util.LoggerUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
@@ -46,6 +48,19 @@ public class LoginForm {
         card.setStyle("-fx-background-color: white; -fx-background-radius: 12; "
             + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 20, 0, 0, 5);");
 
+        HBox titleRow = new HBox(12);
+        titleRow.setAlignment(Pos.CENTER);
+        ImageView logoView = null;
+        try {
+            Image logo = new Image(getClass().getResourceAsStream("/images/school_logo.jpeg"));
+            logoView = new ImageView(logo);
+            logoView.setFitWidth(40);
+            logoView.setFitHeight(40);
+            logoView.setPreserveRatio(true);
+        } catch (Exception ignored) {}
+
+        VBox titleBlock = new VBox(0);
+        titleBlock.setAlignment(Pos.CENTER);
         Label title = new Label("THORIUM");
         title.setFont(Font.font("System", FontWeight.BOLD, 26));
         title.setTextFill(Color.web("#1a237e"));
@@ -53,6 +68,9 @@ public class LoginForm {
         Label subtitle = new Label("Exam Analysis System");
         subtitle.setFont(Font.font("System", 14));
         subtitle.setTextFill(Color.gray(0.5));
+        titleBlock.getChildren().addAll(title, subtitle);
+        if (logoView != null) titleRow.getChildren().add(logoView);
+        titleRow.getChildren().add(titleBlock);
 
         Label loginLabel = new Label("Sign In");
         loginLabel.setFont(Font.font("System", FontWeight.BOLD, 16));
@@ -80,7 +98,7 @@ public class LoginForm {
         VBox separator = new VBox();
         separator.setPrefHeight(10);
 
-        card.getChildren().addAll(title, subtitle, separator, loginLabel, usernameField, passwordField, errorLabel, loginBtn);
+        card.getChildren().addAll(titleRow, separator, loginLabel, usernameField, passwordField, errorLabel, loginBtn);
         root.getChildren().add(card);
         return root;
     }

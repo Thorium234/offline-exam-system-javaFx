@@ -5,6 +5,7 @@ import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.forms.DashboardForm;
 import javafx.application.Application;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.stage.Stage;
 
 public class Main extends Application {
@@ -19,7 +20,19 @@ public class Main extends Application {
     @Override
     public void start(Stage stage) {
         this.stage = stage;
+        Image appIcon = loadAppIcon();
+        if (appIcon != null) {
+            stage.getIcons().add(appIcon);
+        }
         showLogin();
+    }
+
+    private Image loadAppIcon() {
+        try {
+            return new Image(getClass().getResourceAsStream("/images/school_logo.jpeg"));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void showLogin() {

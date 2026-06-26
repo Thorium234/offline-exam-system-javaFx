@@ -61,13 +61,14 @@ public class TeacherDashboardForm {
     private void showOverview() {
         VBox view = new VBox(20);
 
-        Label header = UIUtils.makeHeader("My Dashboard");
+        Label header = new Label("\uD83C\uDFE0  My Dashboard");
+        header.setFont(Font.font("System", FontWeight.BOLD, 22));
 
-        Label roleBadge = new Label("Logged in as " + loggedInUser + " (Teacher)");
+        Label roleBadge = new Label("\uD83D\uDC64 " + loggedInUser + " (Teacher)");
         roleBadge.setFont(Font.font("System", 13));
         roleBadge.setTextFill(Color.gray(0.5));
 
-        Label classHeader = new Label("My Classes");
+        Label classHeader = new Label("\uD83C\uDF92  My Classes");
         classHeader.setFont(Font.font("System", FontWeight.BOLD, 18));
 
         FlowPane classCards = new FlowPane(15, 15);
@@ -160,11 +161,11 @@ public class TeacherDashboardForm {
     private void showMarksEntry(int form, String stream) {
         VBox view = new VBox(15);
 
-        Button backBtn = new Button("← Back to My Classes");
+        Button backBtn = new Button("\u2190  Back to My Classes");
         backBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: " + PRIMARY + "; -fx-font-size: 13;");
         backBtn.setOnAction(e -> showOverview());
 
-        Label header = new Label("Marks Entry — Form " + form + " " + stream);
+        Label header = new Label("\u270F\uFE0F  Marks Entry \u2014 Form " + form + " " + stream);
         header.setFont(Font.font("System", FontWeight.BOLD, 20));
 
         HBox examRow = new HBox(10);

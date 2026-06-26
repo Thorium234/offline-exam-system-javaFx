@@ -13,6 +13,8 @@ import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
@@ -88,10 +90,22 @@ public class DashboardForm {
 
     private VBox createSidebar() {
         VBox sidebar = new VBox(6);
-        sidebar.setPrefWidth(230);
+        sidebar.setPrefWidth(240);
         sidebar.setPadding(new Insets(20, 12, 20, 12));
         sidebar.setStyle("-fx-background-color: " + PRIMARY + ";");
 
+        HBox branding = new HBox(10);
+        branding.setAlignment(Pos.CENTER_LEFT);
+        ImageView logoView = null;
+        try {
+            Image logo = new Image(getClass().getResourceAsStream("/images/school_logo.jpeg"));
+            logoView = new ImageView(logo);
+            logoView.setFitWidth(32);
+            logoView.setFitHeight(32);
+            logoView.setPreserveRatio(true);
+        } catch (Exception ignored) {}
+
+        VBox titleBlock = new VBox(0);
         Label title = new Label("THORIUM");
         title.setFont(Font.font("System", FontWeight.BOLD, 22));
         title.setTextFill(Color.WHITE);
@@ -99,12 +113,14 @@ public class DashboardForm {
         Label sub = new Label("Exam Analysis");
         sub.setFont(Font.font("System", 13));
         sub.setTextFill(Color.rgb(255, 255, 255, 0.6));
-        sub.setPadding(new Insets(0, 0, 10, 0));
+        titleBlock.getChildren().addAll(title, sub);
+        if (logoView != null) branding.getChildren().add(logoView);
+        branding.getChildren().add(titleBlock);
 
-        Label userBadge = new Label("Logged in as " + loggedInUser);
+        Label userBadge = new Label("\uD83D\uDC64 " + loggedInUser);
         userBadge.setFont(Font.font("System", 11));
         userBadge.setTextFill(Color.rgb(255, 255, 255, 0.5));
-        userBadge.setPadding(new Insets(0, 0, 5, 0));
+        userBadge.setPadding(new Insets(5, 0, 5, 0));
 
         curriculumSwitcher.setItems(FXCollections.observableArrayList(
             CurriculumSystem.SYSTEM_844.getDisplayName(),
@@ -112,11 +128,16 @@ public class DashboardForm {
         ));
         CurriculumSystem current = settings.getCurriculum();
         curriculumSwitcher.setValue(current.getDisplayName());
-        curriculumSwitcher.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-text-fill: white;");
+        curriculumSwitcher.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-text-fill: white; -fx-font-size: 12;");
         curriculumSwitcher.setOnAction(e -> onCurriculumChanged());
 
+        Label navHeader = new Label("  NAVIGATION");
+        navHeader.setFont(Font.font("System", FontWeight.BOLD, 10));
+        navHeader.setTextFill(Color.rgb(255, 255, 255, 0.35));
+        navHeader.setPadding(new Insets(12, 0, 4, 0));
+
         VBox nav = new VBox(2);
-        nav.setPadding(new Insets(10, 0, 0, 0));
+        nav.setPadding(new Insets(0, 0, 0, 0));
         List<String> navItems;
         if ("teacher".equals(loggedInRole)) {
             navItems = List.of("Dashboard", "Marks Entry", "Bulk Marks");
@@ -128,11 +149,12 @@ public class DashboardForm {
         }
 
         for (String itemName : navItems) {
-            Label lbl = new Label("  " + itemName);
-            lbl.setFont(Font.font("System", 14));
-            lbl.setTextFill(Color.rgb(255, 255, 255, 0.75));
-            lbl.setPadding(new Insets(10, 15, 10, 15));
-            lbl.setPrefWidth(210);
+            String icon = getIconForNavItem(itemName);
+            Label lbl = new Label(icon + "  " + itemName);
+            lbl.setFont(Font.font("System", 13));
+            lbl.setTextFill(Color.rgb(255, 255, 255, 0.8));
+            lbl.setPadding(new Insets(9, 15, 9, 15));
+            lbl.setPrefWidth(220);
             lbl.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
             String page = itemName.toLowerCase().replace(" ", "_");
             lbl.setOnMouseEntered(e ->
@@ -146,15 +168,38 @@ public class DashboardForm {
         VBox spacer = new VBox();
         VBox.setVgrow(spacer, Priority.ALWAYS);
 
-        Button logoutBtn = new Button("Logout");
-        logoutBtn.setPrefWidth(210);
+        Button logoutBtn = new Button("\uD83D\uDEAA  Logout");
+        logoutBtn.setPrefWidth(220);
         logoutBtn.setStyle("-fx-background-color: rgba(255,255,255,0.1); -fx-text-fill: white; -fx-font-size: 13; -fx-background-radius: 6;");
         logoutBtn.setOnAction(e -> {
             if (onLogout != null) onLogout.run();
         });
 
-        sidebar.getChildren().addAll(title, sub, userBadge, curriculumSwitcher, nav, spacer, logoutBtn);
+        sidebar.getChildren().addAll(branding, userBadge, curriculumSwitcher, navHeader, nav, spacer, logoutBtn);
         return sidebar;
+    }
+
+    private String getIconForNavItem(String item) {
+        return switch (item) {
+            case "Dashboard" -> AppTheme.SIDEBAR_ICON_DASHBOARD;
+            case "Students" -> AppTheme.SIDEBAR_ICON_STUDENTS;
+            case "Subjects" -> AppTheme.SIDEBAR_ICON_SUBJECTS;
+            case "Exams" -> AppTheme.SIDEBAR_ICON_EXAMS;
+            case "Grading Scales" -> AppTheme.SIDEBAR_ICON_GRADES;
+            case "Users" -> AppTheme.SIDEBAR_ICON_USERS;
+            case "Teacher Subjects" -> AppTheme.SIDEBAR_ICON_TEACHERS;
+            case "Streams" -> AppTheme.SIDEBAR_ICON_STREAMS;
+            case "Stream Subjects" -> AppTheme.SIDEBAR_ICON_STREAMS;
+            case "Settings" -> AppTheme.SIDEBAR_ICON_SETTINGS;
+            case "Publish" -> AppTheme.SIDEBAR_ICON_PUBLISH;
+            case "Marks Entry" -> AppTheme.SIDEBAR_ICON_MARKS;
+            case "Bulk Marks" -> AppTheme.SIDEBAR_ICON_BULK;
+            case "Analysis" -> AppTheme.SIDEBAR_ICON_ANALYSIS;
+            case "Reports" -> AppTheme.SIDEBAR_ICON_REPORTS;
+            case "Browse Students" -> AppTheme.SIDEBAR_ICON_BROWSE;
+            case "Recycle Bin" -> AppTheme.SIDEBAR_ICON_RECYCLE;
+            default -> "  ";
+        };
     }
 
     private ScrollPane createContent() {
@@ -204,36 +249,66 @@ public class DashboardForm {
 
     private final ExamAnalysisService analysisService = new ExamAnalysisService();
 
+    private VBox statCard(String title, String value, String icon) {
+        VBox card = new VBox(5);
+        card.setPrefSize(210, 110);
+        card.setAlignment(Pos.CENTER);
+        card.setStyle("-fx-background-color: white; -fx-background-radius: 10; "
+            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);");
+        Label iconLabel = new Label(icon);
+        iconLabel.setFont(Font.font("System", 20));
+        Label val = new Label(value);
+        val.setFont(Font.font("System", FontWeight.BOLD, 28));
+        val.setTextFill(Color.web(PRIMARY));
+        Label lbl = new Label(title);
+        lbl.setFont(Font.font("System", 12));
+        lbl.setTextFill(Color.gray(0.5));
+        card.getChildren().addAll(iconLabel, val, lbl);
+
+        card.setOnMouseEntered(e -> card.setStyle(
+            "-fx-background-color: #e8eaf6; -fx-background-radius: 10; "
+            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"));
+        card.setOnMouseExited(e -> card.setStyle(
+            "-fx-background-color: white; -fx-background-radius: 10; "
+            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);"));
+
+        return card;
+    }
+
     private void showDashboard() {
         VBox view = new VBox(20);
 
-        Label header = new Label("Dashboard");
-        header.setFont(Font.font("System", FontWeight.BOLD, 24));
+        Label header = new Label("\uD83C\uDFE0  Dashboard");
+        header.setFont(Font.font("System", FontWeight.BOLD, 22));
 
         Label welcome = new Label("Welcome to Thorium Exam Analysis System v2.\n"
-            + "Active curriculum: " + settings.getCurriculum().getDisplayName()
-            + "\nUse the sidebar to navigate.");
+            + "Active curriculum: " + settings.getCurriculum().getDisplayName());
         welcome.setFont(Font.font("System", 14));
         welcome.setTextFill(Color.gray(0.4));
         welcome.setWrapText(true);
 
         HBox cards = new HBox(20);
-        VBox[] cardBoxes = {
-            statCard("Students", "…"),
-            statCard("Subjects", "…"),
-            statCard("Exams", "…"),
-            statCard("Marks Entered", "…")
+        String[][] cardDefs = {
+            {"Students", "\u2026", "\uD83D\uDC65"},
+            {"Subjects", "\u2026", "\uD83D\uDCDA"},
+            {"Exams", "\u2026", "\uD83D\uDCCB"},
+            {"Marks Entered", "\u2026", "\u270F\uFE0F"}
         };
+        VBox[] cardBoxes = new VBox[4];
+        for (int i = 0; i < 4; i++) {
+            cardBoxes[i] = statCard(cardDefs[i][0], cardDefs[i][1], cardDefs[i][2]);
+        }
         cards.getChildren().addAll(cardBoxes);
+
         cardBoxes[0].setOnMouseClicked(e -> showStudentBrowser());
         cardBoxes[0].setCursor(javafx.scene.Cursor.HAND);
-        cardBoxes[0].setOnMouseEntered(e -> cardBoxes[0].setStyle(
-            "-fx-background-color: #e8eaf6; -fx-background-radius: 10; "
-            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"));
-        cardBoxes[0].setOnMouseExited(e -> cardBoxes[0].setStyle(
-            "-fx-background-color: white; -fx-background-radius: 10; "
-            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);"));
-        // Load counts in background
+        cardBoxes[1].setOnMouseClicked(e -> showSubjects());
+        cardBoxes[1].setCursor(javafx.scene.Cursor.HAND);
+        cardBoxes[2].setOnMouseClicked(e -> showExams());
+        cardBoxes[2].setCursor(javafx.scene.Cursor.HAND);
+        cardBoxes[3].setOnMouseClicked(e -> showMarksEntry());
+        cardBoxes[3].setCursor(javafx.scene.Cursor.HAND);
+
         Task<int[]> countTask = new Task<>() {
             @Override protected int[] call() {
                 return new int[]{ count("students"), count("subjects"), count("exams"), count("marks") };
@@ -243,29 +318,24 @@ public class DashboardForm {
             int[] counts = countTask.getValue();
             for (int i = 0; i < 4; i++) {
                 VBox card = (VBox)cards.getChildren().get(i);
-                Label valLabel = new Label(String.valueOf(counts[i]));
-                valLabel.setFont(Font.font("System", FontWeight.BOLD, 30));
-                String[] titles = {"Students", "Subjects", "Exams", "Marks Entered"};
-                Label titleLabel = new Label(titles[i]);
-                titleLabel.setFont(Font.font("System", 13));
-                card.getChildren().setAll(valLabel, titleLabel);
+                Label valLabel = (Label) card.getChildren().get(1);
+                valLabel.setText(String.valueOf(counts[i]));
             }
         });
         new Thread(countTask).start();
 
         VBox trendSection = buildExamAnalytics();
 
-        // Demo data section
         VBox demoBox = new VBox(8);
         demoBox.setPadding(new Insets(15));
         demoBox.setStyle("-fx-background-color: #fff3e0; -fx-background-radius: 8; -fx-border-color: #ffcc80; -fx-border-radius: 8;");
-        Label demoLabel = new Label("Demo Data Tools");
+        Label demoLabel = new Label("\uD83D\uDD27  Demo Data Tools");
         demoLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
         demoLabel.setTextFill(Color.web("#e65100"));
 
         HBox demoBtns = new HBox(10);
-        Button seedStudentsBtn = new Button("Generate Students (20/stream)");
-        Button seedMarksBtn = new Button("Generate Marks for Exam 1");
+        Button seedStudentsBtn = new Button("\uD83D\uDC65 Generate Students (20/stream)");
+        Button seedMarksBtn = new Button("\u270F\uFE0F Generate Marks for Exam 1");
         ProgressIndicator demoSpinner = new ProgressIndicator();
         demoSpinner.setVisible(false);
         demoSpinner.setPrefSize(20, 20);
@@ -321,7 +391,7 @@ public class DashboardForm {
         VBox section = new VBox(15);
         section.setPadding(new Insets(20, 0, 0, 0));
 
-        Label title = new Label("Exam Analytics");
+        Label title = new Label("\uD83D\uDCCA  Exam Analytics");
         title.setFont(Font.font("System", FontWeight.BOLD, 18));
 
         HBox controls = new HBox(10);
@@ -338,8 +408,7 @@ public class DashboardForm {
         spinner.setPrefSize(20, 20);
         spinner.setVisible(false);
 
-        // Top Subjects by Average
-        Label topLabel = new Label("Top Subjects by Average");
+        Label topLabel = new Label("\uD83C\uDFC6  Top Subjects by Average");
         topLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
 
         TableView<Object[]> topTable = new TableView<>();
@@ -358,13 +427,11 @@ public class DashboardForm {
         topTable.getColumns().addAll(rankCol, subjCol, avgCol, gradeCol);
         topTable.setPrefHeight(150);
 
-        // Most Improved Stream
-        Label improvedLabel = new Label("Most Improved Stream");
+        Label improvedLabel = new Label("\uD83D\uDCC8  Most Improved Stream");
         improvedLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
         Label improvedValue = new Label();
 
-        // Per-Stream Subject Summary
-        Label summaryLabel = new Label("Per-Stream Subject Summary");
+        Label summaryLabel = new Label("\uD83D\uDCCA  Per-Stream Subject Summary");
         summaryLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
 
         TableView<Object[]> summaryTable = new TableView<>();
@@ -394,7 +461,6 @@ public class DashboardForm {
                     ObservableList<Object[]> summaryData = FXCollections.observableArrayList();
                     String[] improvement = {""};
                     try (Connection conn = db.getConnection()) {
-                        // Top subjects
                         try (PreparedStatement ps = conn.prepareStatement(
                             "SELECT su.subject_name, AVG(m.score) as avg_score, su.id as subject_id "
                             + "FROM marks m JOIN subjects su ON su.id = m.subject_id "
@@ -413,7 +479,6 @@ public class DashboardForm {
                             }
                         }
 
-                        // Most improved stream
                         try (Statement st = conn.createStatement();
                              ResultSet rs = st.executeQuery("SELECT id FROM exams ORDER BY id DESC LIMIT 2")) {
                             long[] eids = new long[2];
@@ -438,7 +503,6 @@ public class DashboardForm {
                             }
                         }
 
-                        // Per-stream subject summary
                         try (PreparedStatement ps = conn.prepareStatement(
                             "SELECT s.form, s.stream, su.subject_name, AVG(m.score) as avg_score, su.id as subject_id "
                             + "FROM marks m JOIN students s ON s.id = m.student_id "
@@ -503,22 +567,6 @@ public class DashboardForm {
             }
         }
         return map;
-    }
-
-    private VBox statCard(String title, String value) {
-        VBox card = new VBox(5);
-        card.setPrefSize(220, 100);
-        card.setAlignment(Pos.CENTER);
-        card.setStyle("-fx-background-color: white; -fx-background-radius: 10; "
-            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);");
-        Label val = new Label(value);
-        val.setFont(Font.font("System", FontWeight.BOLD, 30));
-        val.setTextFill(Color.web(PRIMARY));
-        Label lbl = new Label(title);
-        lbl.setFont(Font.font("System", 13));
-        lbl.setTextFill(Color.gray(0.5));
-        card.getChildren().addAll(val, lbl);
-        return card;
     }
 
     private void showStudents() {
