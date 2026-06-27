@@ -536,10 +536,10 @@ public class AnalysisForm {
         meritFormRb.setToggleGroup(meritGroupType);
         meritStreamRb.setSelected(true);
         meritGroupBox.setPrefWidth(200);
-        UIUtils.loadStreams(meritGroupBox);
+        UIUtils.loadStreamsWithForms(meritGroupBox);
         meritGroupType.selectedToggleProperty().addListener((obs, old, cur) -> {
             meritGroupBox.getItems().clear();
-            if (cur == meritStreamRb) UIUtils.loadStreams(meritGroupBox);
+            if (cur == meritStreamRb) UIUtils.loadStreamsWithForms(meritGroupBox);
             else UIUtils.loadForms(meritGroupBox);
         });
         typeRow.getChildren().addAll(new Label("Group By:"), meritStreamRb, meritFormRb, meritGroupBox);
@@ -558,12 +558,27 @@ public class AnalysisForm {
             if (meritExamBox.getValue() == null) { UIUtils.showError("Select exam."); return; }
             if (meritGroupBox.getValue() == null) { UIUtils.showError("Select group."); return; }
             long examId = Long.parseLong(meritExamBox.getValue().split(" - ")[0]);
-            String groupBy = meritStreamRb.isSelected() ? "stream" : "form";
             String groupValue = meritGroupBox.getValue();
             mSpinner.setVisible(true);
+            final int formFilter;
+            final String groupBy;
+            final String streamValue;
+            if (meritStreamRb.isSelected() && groupValue.startsWith("Form ")) {
+                String[] parts = groupValue.split(" ", 3);
+                formFilter = Integer.parseInt(parts[1]);
+                streamValue = parts[2];
+                groupBy = "stream";
+            } else {
+                formFilter = 0;
+                streamValue = groupValue;
+                groupBy = meritStreamRb.isSelected() ? "stream" : "form";
+            }
+            final String fGroupBy = groupBy;
+            final String fStreamValue = streamValue;
+            final int fFormFilter = formFilter;
             Task<Void> task = new Task<>() {
                 @Override protected Void call() {
-                    loadMeritTable(examId, groupBy, groupValue);
+                    loadMeritTable(examId, fGroupBy, fStreamValue, fFormFilter);
                     return null;
                 }
             };
@@ -575,18 +590,34 @@ public class AnalysisForm {
         exportPdfBtn.setOnAction(e -> {
             if (meritExamBox.getValue() == null || meritGroupBox.getValue() == null) return;
             long examId = Long.parseLong(meritExamBox.getValue().split(" - ")[0]);
-            String groupBy = meritStreamRb.isSelected() ? "stream" : "form";
             String groupValue = meritGroupBox.getValue();
+            final int formFilter;
+            final String groupBy;
+            final String streamValue;
+            if (meritStreamRb.isSelected() && groupValue.startsWith("Form ")) {
+                String[] parts = groupValue.split(" ", 3);
+                formFilter = Integer.parseInt(parts[1]);
+                streamValue = parts[2];
+                groupBy = "stream";
+            } else {
+                formFilter = 0;
+                streamValue = groupValue;
+                groupBy = meritStreamRb.isSelected() ? "stream" : "form";
+            }
+            String fileNameBase = groupBy + "_" + (formFilter > 0 ? "F" + formFilter + "_" : "") + streamValue.replace("/", "_");
             FileChooser fc = new FileChooser();
             fc.setTitle("Export Merit List");
-            fc.setInitialFileName("merit_list_" + groupBy + "_" + groupValue.replace("/", "_") + ".pdf");
+            fc.setInitialFileName("merit_list_" + fileNameBase + ".pdf");
             fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Files", "*.pdf"));
             File file = fc.showSaveDialog(stage);
             if (file == null) return;
             mSpinner.setVisible(true);
+            final String fGroupBy = groupBy;
+            final String fStreamValue = streamValue;
+            final int fFormFilter = formFilter;
             Task<Void> task = new Task<>() {
                 @Override protected Void call() {
-                    new ReportCardGenerator().generateGroupReport(examId, groupBy, groupValue, file.toPath());
+                    new ReportCardGenerator().generateGroupReport(examId, fGroupBy, fStreamValue, fFormFilter, file.toPath());
                     return null;
                 }
             };
@@ -600,11 +631,11 @@ public class AnalysisForm {
         return tab;
     }
 
-    private void loadMeritTable(long examId, String groupBy, String groupValue) {
+    private void loadMeritTable(long examId, String groupBy, String groupValue, int formFilter) {
         String filterCol = validateFilterColumn(groupBy.equals("stream") ? "stream" : "form");
         ExamAnalysisService.MeritReportData data;
         try {
-            data = analysisService.computeMeritReport(examId, filterCol, groupValue);
+            data = analysisService.computeMeritReport(examId, filterCol, groupValue, formFilter);
         } catch (Exception e) {
             UIUtils.showError(e.getMessage());
             return;

@@ -240,6 +240,21 @@ public class StudentRepository {
         return countByFormStream(form, stream);
     }
 
+    public void update(long id, String admissionNumber, String fullName, int form, String stream) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "UPDATE students SET admission_number = ?, full_name = ?, form = ?, stream = ? WHERE id = ?")) {
+            ps.setString(1, admissionNumber);
+            ps.setString(2, fullName);
+            ps.setInt(3, form);
+            ps.setString(4, stream);
+            ps.setLong(5, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to update student", e);
+        }
+    }
+
     public void deallocate(long studentId) {
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement("UPDATE students SET deallocated = 1 WHERE id = ?")) {

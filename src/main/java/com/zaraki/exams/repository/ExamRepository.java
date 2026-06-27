@@ -159,4 +159,43 @@ public class ExamRepository {
             return 0;
         }
     }
+
+    public void update(long id, String academicYear, String term, String examSeries) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "UPDATE exams SET academic_year = ?, term = ?, exam_series = ? WHERE id = ?")) {
+            ps.setString(1, academicYear);
+            ps.setString(2, term);
+            ps.setString(3, examSeries);
+            ps.setLong(4, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to update exam", e);
+        }
+    }
+
+    public void delete(long id) {
+        try (Connection conn = db.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM marks WHERE exam_id = ?")) {
+                    ps.setLong(1, id); ps.executeUpdate();
+                }
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM exam_subjects WHERE exam_id = ?")) {
+                    ps.setLong(1, id); ps.executeUpdate();
+                }
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM exams WHERE id = ?")) {
+                    ps.setLong(1, id); ps.executeUpdate();
+                }
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to delete exam", e);
+        }
+    }
 }

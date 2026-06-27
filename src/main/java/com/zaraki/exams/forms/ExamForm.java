@@ -5,15 +5,20 @@ import com.zaraki.exams.repository.ExamRepository;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
 public class ExamForm {
 
     private final ExamRepository examRepo;
+    private final TableView<ExamRow> table;
+    private final ObservableList<ExamRow> data;
 
     public ExamForm(DatabaseEngine db) {
         this.examRepo = new ExamRepository();
+        this.table = new TableView<>();
+        this.data = FXCollections.observableArrayList();
     }
 
     public VBox getView() {
@@ -28,7 +33,6 @@ public class ExamForm {
         Button addBtn = new Button("Create");
         form.getChildren().addAll(yearField, termBox, seriesField, addBtn);
 
-        TableView<ExamRow> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.getColumns().addAll(
             UIUtils.<ExamRow>col("ID", "id", 60),
@@ -37,10 +41,46 @@ public class ExamForm {
             UIUtils.<ExamRow>col("Series", "series", 180),
             UIUtils.<ExamRow>col("Max Marks", "maxMarks", 90)
         );
+
+        TableColumn<ExamRow, Void> colEdit = new TableColumn<>("Edit");
+        colEdit.setPrefWidth(60);
+        colEdit.setCellFactory(col -> new TableCell<>() {
+            private final Button btn = new Button("Edit");
+            { btn.setStyle("-fx-font-size: 10; -fx-background-color: #1565c0; -fx-text-fill: white;"); }
+            @Override protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    ExamRow row = getTableRow().getItem();
+                    btn.setOnAction(e -> editExam(row));
+                    setGraphic(btn);
+                }
+            }
+        });
+        table.getColumns().add(colEdit);
+
+        TableColumn<ExamRow, Void> colDel = new TableColumn<>("");
+        colDel.setPrefWidth(60);
+        colDel.setCellFactory(col -> new TableCell<>() {
+            private final Button btn = new Button("Delete");
+            { btn.setStyle("-fx-font-size: 10; -fx-background-color: #c62828; -fx-text-fill: white;"); }
+            @Override protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    ExamRow row = getTableRow().getItem();
+                    btn.setOnAction(e -> deleteExam(row));
+                    setGraphic(btn);
+                }
+            }
+        });
+        table.getColumns().add(colDel);
+
         table.setPrefHeight(400);
 
-        ObservableList<ExamRow> data = FXCollections.observableArrayList();
-        load(data);
+        load();
         table.setItems(data);
 
         addBtn.setOnAction(e -> {
@@ -57,7 +97,7 @@ public class ExamForm {
             }
             try {
                 examRepo.insert(year, term, series);
-                load(data);
+                load();
                 yearField.clear(); termBox.setValue(null); seriesField.clear();
             } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
         });
@@ -66,7 +106,7 @@ public class ExamForm {
         return view;
     }
 
-    private void load(ObservableList<ExamRow> data) {
+    private void load() {
         data.clear();
         try {
             var exams = examRepo.findAll();
@@ -78,6 +118,65 @@ public class ExamForm {
                     (String) e.get("exam_series"),
                     (Integer) e.get("max_marks")));
         } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
+    }
+
+    private void editExam(ExamRow row) {
+        Dialog<ExamRow> dialog = new Dialog<>();
+        dialog.setTitle("Edit Exam");
+        dialog.setHeaderText("Edit Exam #" + row.getId());
+
+        ButtonType saveType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(10);
+        grid.setPadding(new Insets(20));
+
+        TextField yearField = new TextField(row.getYear());
+        ComboBox<String> termBox = new ComboBox<>(FXCollections.observableArrayList("Term 1", "Term 2", "Term 3"));
+        termBox.setValue(row.getTerm());
+        TextField seriesField = new TextField(row.getSeries());
+
+        grid.add(new Label("Year:"), 0, 0); grid.add(yearField, 1, 0);
+        grid.add(new Label("Term:"), 0, 1); grid.add(termBox, 1, 1);
+        grid.add(new Label("Series:"), 0, 2); grid.add(seriesField, 1, 2);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(dialogBtn -> {
+            if (dialogBtn == saveType) {
+                String year = yearField.getText().trim();
+                String term = termBox.getValue();
+                String series = seriesField.getText().trim();
+                if (year.isEmpty() || term == null || series.isEmpty()) {
+                    UIUtils.showError("All fields are required.");
+                    return null;
+                }
+                return new ExamRow(row.getId(), year, term, series, row.getMaxMarks());
+            }
+            return null;
+        });
+
+        dialog.showAndWait().ifPresent(result -> {
+            try {
+                examRepo.update(result.getId(), result.getYear(), result.getTerm(), result.getSeries());
+                load();
+                UIUtils.showInfo("Exam updated.");
+            } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
+        });
+    }
+
+    private void deleteExam(ExamRow row) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+            "Delete exam '" + row.getYear() + " " + row.getTerm() + " " + row.getSeries() + "'?\n"
+            + "This will also delete ALL marks for this exam. This cannot be undone!",
+            ButtonType.YES, ButtonType.NO);
+        if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
+        try {
+            examRepo.delete(row.getId());
+            load();
+            UIUtils.showInfo("Exam deleted.");
+        } catch (Exception ex) { UIUtils.showError("Cannot delete: " + ex.getMessage()); }
     }
 
     public static class ExamRow {

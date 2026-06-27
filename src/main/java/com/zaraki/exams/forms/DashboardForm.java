@@ -12,7 +12,9 @@ import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
@@ -61,7 +63,11 @@ public class DashboardForm {
     private StudentBrowserForm studentBrowserForm;
     private RecycleBinForm recycleBinForm;
     private SubjectAssignmentForm subjectAssignmentForm;
-    private Label activeNavLabel;
+    private Node activeNavItem;
+    private VBox root;
+
+    private boolean darkMode;
+    private Button darkModeToggle;
 
     public DashboardForm(Stage stage, String loggedInUser, String loggedInUsername, String loggedInRole, long loggedInUserId, Runnable onLogout) {
         this.stage = stage;
@@ -77,12 +83,47 @@ public class DashboardForm {
         this.contentArea = new StackPane();
         this.contentArea.getStyleClass().add("content-area");
         this.curriculumSwitcher = new ComboBox<>();
+        this.darkMode = "true".equals(settings.getSetting("dark_mode", "false"));
     }
 
     public VBox getView() {
-        VBox root = new VBox();
-        root.getChildren().addAll(createTopNavbar(), createBody());
+        root = new VBox();
+        root.getStyleClass().add("root");
+        Node content = createContent();
+        VBox.setVgrow(content, Priority.ALWAYS);
+        root.getChildren().addAll(createTopNavbar(), createNavBar(), content);
+        if (darkMode) {
+            Platform.runLater(() -> {
+                root.getStyleClass().add("dark-mode");
+                applyDarkModeToScene(true);
+            });
+        }
         return root;
+    }
+
+    private void toggleDarkMode() {
+        darkMode = !darkMode;
+        settings.setSetting("dark_mode", String.valueOf(darkMode));
+        if (darkMode) {
+            root.getStyleClass().add("dark-mode");
+            darkModeToggle.setText("\u2600\uFE0F  Light");
+        } else {
+            root.getStyleClass().remove("dark-mode");
+            darkModeToggle.setText("\uD83C\uDF19  Dark");
+        }
+        applyDarkModeToScene(darkMode);
+    }
+
+    private void applyDarkModeToScene(boolean on) {
+        Scene scene = root.getScene();
+        if (scene == null) return;
+        if (on) {
+            scene.getStylesheets().clear();
+            scene.getStylesheets().add(getClass().getResource("/styles/application.css").toExternalForm());
+        } else {
+            scene.getStylesheets().clear();
+            scene.getStylesheets().add(getClass().getResource("/styles/application.css").toExternalForm());
+        }
     }
 
     private HBox createTopNavbar() {
@@ -90,7 +131,7 @@ public class DashboardForm {
         topBar.setMinHeight(56);
         topBar.setPrefHeight(56);
         topBar.setAlignment(Pos.CENTER_LEFT);
-        topBar.setStyle("-fx-background-color: white; -fx-border-color: #e0e0e0; -fx-border-width: 0 0 1 0;");
+        topBar.getStyleClass().add("topbar");
 
         HBox leftSection = new HBox(10);
         leftSection.setAlignment(Pos.CENTER_LEFT);
@@ -108,6 +149,7 @@ public class DashboardForm {
         Label appTitle = new Label("Exam Analysis Tool");
         appTitle.setFont(Font.font("System", FontWeight.BOLD, 18));
         appTitle.setTextFill(Color.web(PRIMARY));
+        appTitle.getStyleClass().add("topbar-brand");
 
         if (logoView != null) leftSection.getChildren().add(logoView);
         leftSection.getChildren().add(appTitle);
@@ -119,37 +161,33 @@ public class DashboardForm {
         rightSection.setAlignment(Pos.CENTER_RIGHT);
         rightSection.setPadding(new Insets(0, 20, 0, 0));
 
+        darkModeToggle = new Button(darkMode ? "\u2600\uFE0F  Light" : "\uD83C\uDF19  Dark");
+        darkModeToggle.setStyle("-fx-background-color: transparent; -fx-text-fill: #666; -fx-font-size: 13; -fx-background-radius: 6; -fx-cursor: hand; -fx-border-color: #e0e0e0; -fx-border-radius: 6; -fx-border-width: 1;");
+        darkModeToggle.setOnAction(e -> toggleDarkMode());
+
         Label userBadge = new Label("\uD83D\uDC64 " + loggedInUser);
         userBadge.setFont(Font.font("System", 13));
         userBadge.setTextFill(Color.gray(0.5));
+        userBadge.getStyleClass().add("topbar-user");
 
         Button logoutBtn = new Button("\uD83D\uDEAA  Logout");
-        logoutBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #666; -fx-font-size: 13; -fx-background-radius: 6; -fx-cursor: hand;");
+        logoutBtn.getStyleClass().add("topbar-logout");
         logoutBtn.setOnAction(e -> {
             if (onLogout != null) onLogout.run();
         });
-        logoutBtn.setOnMouseEntered(e ->
-            logoutBtn.setStyle("-fx-background-color: #f5f5f5; -fx-text-fill: #c62828; -fx-font-size: 13; -fx-background-radius: 6; -fx-cursor: hand;"));
-        logoutBtn.setOnMouseExited(e ->
-            logoutBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #666; -fx-font-size: 13; -fx-background-radius: 6; -fx-cursor: hand;"));
 
-        rightSection.getChildren().addAll(userBadge, logoutBtn);
+        rightSection.getChildren().addAll(darkModeToggle, userBadge, logoutBtn);
         topBar.getChildren().addAll(leftSection, spacer, rightSection);
         return topBar;
     }
 
-    private HBox createBody() {
-        HBox body = new HBox();
-        VBox.setVgrow(body, Priority.ALWAYS);
-        body.getChildren().addAll(createSidebar(), createContent());
-        return body;
-    }
-
-    private VBox createSidebar() {
-        VBox sidebar = new VBox(6);
-        sidebar.setPrefWidth(240);
-        sidebar.setPadding(new Insets(20, 12, 20, 12));
-        sidebar.setStyle("-fx-background-color: " + PRIMARY + ";");
+    private HBox createNavBar() {
+        HBox navBar = new HBox(6);
+        navBar.setMinHeight(64);
+        navBar.setPrefHeight(64);
+        navBar.setAlignment(Pos.CENTER_LEFT);
+        navBar.setPadding(new Insets(0, 20, 0, 20));
+        navBar.getStyleClass().add("navbar");
 
         curriculumSwitcher.setItems(FXCollections.observableArrayList(
             CurriculumSystem.SYSTEM_844.getDisplayName(),
@@ -157,62 +195,82 @@ public class DashboardForm {
         ));
         CurriculumSystem current = settings.getCurriculum();
         curriculumSwitcher.setValue(current.getDisplayName());
-        curriculumSwitcher.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-text-fill: white; -fx-font-size: 12;");
+        curriculumSwitcher.setStyle("-fx-background-color: #f0f0f0; -fx-text-fill: #333; -fx-font-size: 12; -fx-background-radius: 6;");
         curriculumSwitcher.setOnAction(e -> onCurriculumChanged());
+        curriculumSwitcher.setPrefWidth(140);
 
-        Label navHeader = new Label("  NAVIGATION");
-        navHeader.setFont(Font.font("System", FontWeight.BOLD, 10));
-        navHeader.setTextFill(Color.rgb(255, 255, 255, 0.35));
-        navHeader.setPadding(new Insets(16, 0, 8, 0));
+        Region divider = new Region();
+        divider.setMinWidth(12);
 
-        VBox nav = new VBox(2);
-        List<String> navItems;
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-border: none;");
+        scrollPane.setFitToHeight(true);
+        scrollPane.setPrefHeight(64);
+        HBox.setHgrow(scrollPane, Priority.ALWAYS);
+
+        HBox navItems = new HBox(2);
+        navItems.setAlignment(Pos.CENTER_LEFT);
+        navItems.setPadding(new Insets(0, 10, 0, 10));
+
+        List<String> itemNames;
         if ("teacher".equals(loggedInRole)) {
-            navItems = List.of("Dashboard", "Marks Entry", "Bulk Marks");
+            itemNames = List.of("Dashboard", "Marks Entry", "Bulk Marks");
         } else {
-            navItems = List.of("Dashboard", "Students", "Subjects", "Exams",
+            itemNames = List.of("Dashboard", "Students", "Subjects", "Exams",
                 "Grading Scales", "Users", "Teacher Subjects", "Streams",
                 "Stream Subjects", "Settings", "Publish", "Marks Entry",
                 "Bulk Marks", "Analysis", "Reports", "Browse Students", "Recycle Bin");
         }
 
-        for (String itemName : navItems) {
+        for (String itemName : itemNames) {
             String icon = getIconForNavItem(itemName);
-            Label lbl = new Label(icon + "  " + itemName);
-            lbl.setFont(Font.font("System", 13));
-            lbl.setTextFill(Color.rgb(255, 255, 255, 0.8));
-            lbl.setPadding(new Insets(9, 15, 9, 15));
-            lbl.setPrefWidth(220);
-            lbl.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
+            VBox item = new VBox(0);
+            item.setAlignment(Pos.CENTER);
+            item.setPadding(new Insets(8, 14, 6, 14));
+            item.setMinWidth(64);
+            item.getStyleClass().add("navbar-item");
+
+            Label iconLabel = new Label(icon);
+            iconLabel.setFont(Font.font("System", 18));
+            iconLabel.getStyleClass().add("navbar-icon");
+
+            Label textLabel = new Label(itemName);
+            textLabel.setFont(Font.font("System", 10));
+            textLabel.setTextFill(Color.gray(0.5));
+            textLabel.getStyleClass().add("navbar-text");
+
+            item.getChildren().addAll(iconLabel, textLabel);
             String page = itemName.toLowerCase().replace(" ", "_");
-            lbl.setOnMouseEntered(e -> {
-                if (lbl != activeNavLabel) {
-                    lbl.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-background-radius: 6;");
+
+            item.setOnMouseEntered(e -> {
+                if (item != activeNavItem) {
+                    item.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 6; -fx-cursor: hand;");
                 }
             });
-            lbl.setOnMouseExited(e -> {
-                if (lbl != activeNavLabel) {
-                    lbl.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
+            item.setOnMouseExited(e -> {
+                if (item != activeNavItem) {
+                    item.setStyle("-fx-background-color: transparent; -fx-background-radius: 6; -fx-cursor: hand;");
                 }
             });
-            lbl.setOnMouseClicked(e -> {
+            item.setOnMouseClicked(e -> {
                 navigate(page);
-                setActiveNavLabel(lbl);
+                setActiveNavItem(item);
             });
-            nav.getChildren().add(lbl);
+            navItems.getChildren().add(item);
         }
 
-        if (!nav.getChildren().isEmpty()) {
-            activeNavLabel = (Label) nav.getChildren().get(0);
-            activeNavLabel.setStyle("-fx-background-color: rgba(255,255,255,0.2); -fx-background-radius: 6;");
-            activeNavLabel.setTextFill(Color.WHITE);
+        if (!navItems.getChildren().isEmpty()) {
+            VBox first = (VBox) navItems.getChildren().get(0);
+            activeNavItem = first;
+            first.getStyleClass().add("navbar-item-active");
+            ((Label) first.getChildren().get(1)).getStyleClass().add("navbar-text-active");
         }
 
-        VBox spacer = new VBox();
-        VBox.setVgrow(spacer, Priority.ALWAYS);
-
-        sidebar.getChildren().addAll(curriculumSwitcher, navHeader, nav, spacer);
-        return sidebar;
+        scrollPane.setContent(navItems);
+        navBar.getChildren().addAll(curriculumSwitcher, divider, scrollPane);
+        return navBar;
     }
 
     private String getIconForNavItem(String item) {
@@ -238,14 +296,16 @@ public class DashboardForm {
         };
     }
 
-    private void setActiveNavLabel(Label label) {
-        if (activeNavLabel != null) {
-            activeNavLabel.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
-            activeNavLabel.setTextFill(Color.rgb(255, 255, 255, 0.8));
+    private void setActiveNavItem(VBox item) {
+        if (activeNavItem != null) {
+            activeNavItem.getStyleClass().remove("navbar-item-active");
+            ((Label) ((VBox) activeNavItem).getChildren().get(1)).getStyleClass().remove("navbar-text-active");
+            ((Label) ((VBox) activeNavItem).getChildren().get(1)).setTextFill(Color.gray(0.5));
         }
-        activeNavLabel = label;
-        activeNavLabel.setStyle("-fx-background-color: rgba(255,255,255,0.2); -fx-background-radius: 6;");
-        activeNavLabel.setTextFill(Color.WHITE);
+        activeNavItem = item;
+        item.getStyleClass().add("navbar-item-active");
+        ((Label) item.getChildren().get(1)).getStyleClass().add("navbar-text-active");
+        ((Label) item.getChildren().get(1)).setTextFill(Color.web(PRIMARY));
     }
 
     private ScrollPane createContent() {
@@ -299,24 +359,24 @@ public class DashboardForm {
         VBox card = new VBox(5);
         card.setPrefSize(210, 110);
         card.setAlignment(Pos.CENTER);
-        card.setStyle("-fx-background-color: white; -fx-background-radius: 10; "
-            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);");
+        card.getStyleClass().add("stat-card");
         Label iconLabel = new Label(icon);
         iconLabel.setFont(Font.font("System", 20));
+        iconLabel.getStyleClass().add("stat-card-icon");
         Label val = new Label(value);
         val.setFont(Font.font("System", FontWeight.BOLD, 28));
         val.setTextFill(Color.web(PRIMARY));
+        val.getStyleClass().add("stat-card-value");
         Label lbl = new Label(title);
         lbl.setFont(Font.font("System", 12));
         lbl.setTextFill(Color.gray(0.5));
+        lbl.getStyleClass().add("stat-card-label");
         card.getChildren().addAll(iconLabel, val, lbl);
 
-        card.setOnMouseEntered(e -> card.setStyle(
-            "-fx-background-color: #e8eaf6; -fx-background-radius: 10; "
-            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"));
-        card.setOnMouseExited(e -> card.setStyle(
-            "-fx-background-color: white; -fx-background-radius: 10; "
-            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);"));
+        String normalStyle = "-fx-background-radius: 10; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);";
+        String hoverStyle = "-fx-background-radius: 10; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);";
+        card.setOnMouseEntered(e -> card.setStyle(hoverStyle + "-fx-background-color: #e8eaf6;"));
+        card.setOnMouseExited(e -> card.setStyle(normalStyle + "-fx-background-color: white;"));
 
         return card;
     }
@@ -326,6 +386,7 @@ public class DashboardForm {
 
         Label header = new Label("\uD83C\uDFE0  Dashboard");
         header.setFont(Font.font("System", FontWeight.BOLD, 22));
+        header.getStyleClass().add("page-header");
 
         Label welcome = new Label("Welcome to Thorium Exam Analysis System v2.\n"
             + "Active curriculum: " + settings.getCurriculum().getDisplayName());
@@ -372,65 +433,107 @@ public class DashboardForm {
 
         VBox trendSection = buildExamAnalytics();
 
+        // ───── Enhanced Demo Tools Section ─────
         VBox demoBox = new VBox(8);
         demoBox.setPadding(new Insets(15));
-        demoBox.setStyle("-fx-background-color: #fff3e0; -fx-background-radius: 8; -fx-border-color: #ffcc80; -fx-border-radius: 8;");
+        demoBox.getStyleClass().add("alert-box");
         Label demoLabel = new Label("\uD83D\uDD27  Demo Data Tools");
         demoLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
-        demoLabel.setTextFill(Color.web("#e65100"));
+        demoLabel.getStyleClass().add("alert-box-title");
 
         HBox demoBtns = new HBox(10);
         Button seedStudentsBtn = new Button("\uD83D\uDC65 Generate Students (20/stream)");
         Button seedMarksBtn = new Button("\u270F\uFE0F Generate Marks for Exam 1");
+        Button seedSubjectsBtn = new Button("\uD83D\uDCDA Generate Subjects");
+        Button seedTeachersBtn = new Button("\uD83D\uDC68\u200D\uD83C\uDFEB Generate Teachers");
+        Button resetBtn = new Button("\uD83D\uDDD1\uFE0F  Delete Entire Demo Database");
+        resetBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
         ProgressIndicator demoSpinner = new ProgressIndicator();
         demoSpinner.setVisible(false);
         demoSpinner.setPrefSize(20, 20);
         Label demoStatus = new Label();
         demoStatus.setFont(Font.font("System", 12));
         demoStatus.setTextFill(Color.gray(0.5));
-        demoBtns.getChildren().addAll(seedStudentsBtn, seedMarksBtn, demoSpinner);
+        demoBtns.getChildren().addAll(seedStudentsBtn, seedMarksBtn, seedSubjectsBtn, seedTeachersBtn, resetBtn, demoSpinner);
 
-        seedStudentsBtn.setOnAction(e -> {
-            demoSpinner.setVisible(true);
-            demoStatus.setText("Generating students...");
-            Task<Integer> task = new Task<>() {
-                @Override protected Integer call() throws Exception {
-                    return new SeedData().seedAll();
-                }
-            };
-            task.setOnSucceeded(ev -> {
-                demoSpinner.setVisible(false);
-                demoStatus.setText("Generated " + task.getValue() + " students across 4 forms.");
-                showDashboard();
-            });
-            task.setOnFailed(ev -> { demoSpinner.setVisible(false); demoStatus.setText("Error: " + task.getException().getMessage()); });
-            new Thread(task).start();
-        });
+        seedStudentsBtn.setOnAction(e -> seedAction(demoSpinner, demoStatus, "Generating students...", () -> {
+            int count = new SeedData().seedAll();
+            Platform.runLater(() -> showDashboard());
+            return "Generated " + count + " students across 4 forms.";
+        }));
 
-        seedMarksBtn.setOnAction(e -> {
-            demoSpinner.setVisible(true);
-            demoStatus.setText("Generating marks...");
-            Task<String> task = new Task<>() {
-                @Override protected String call() throws Exception {
-                    SeedData sd = new SeedData();
-                    long eid = sd.getFirstExamId();
-                    if (eid < 0) return "No exams found. Create an exam first.";
-                    int count = sd.seedMarks(eid);
-                    return "Generated " + count + " marks for exam " + eid + ".";
-                }
-            };
-            task.setOnSucceeded(ev -> {
-                demoSpinner.setVisible(false);
-                demoStatus.setText(task.getValue());
-                showDashboard();
+        seedMarksBtn.setOnAction(e -> seedAction(demoSpinner, demoStatus, "Generating marks...", () -> {
+            SeedData sd = new SeedData();
+            long eid = sd.getFirstExamId();
+            if (eid < 0) return "No exams found. Create an exam first.";
+            int count = sd.seedMarks(eid);
+            Platform.runLater(() -> showDashboard());
+            return "Generated " + count + " marks for exam " + eid + ".";
+        }));
+
+        seedSubjectsBtn.setOnAction(e -> seedAction(demoSpinner, demoStatus, "Generating subjects...", () -> {
+            new SeedData().seedSubjects();
+            Platform.runLater(() -> showDashboard());
+            return "Subjects generated.";
+        }));
+
+        seedTeachersBtn.setOnAction(e -> seedAction(demoSpinner, demoStatus, "Generating teachers...", () -> {
+            new SeedData().seedTeachers();
+            Platform.runLater(() -> showDashboard());
+            return "Teachers generated.";
+        }));
+
+        resetBtn.setOnAction(e -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Delete Entire Demo Database?\n\n"
+                + "This will permanently delete:\n"
+                + "  \u2022 ALL student records\n"
+                + "  \u2022 ALL marks\n"
+                + "  \u2022 ALL exam subjects\n"
+                + "  \u2022 ALL stream assignments\n"
+                + "  \u2022 ALL teacher-subject assignments\n"
+                + "  \u2022 ALL grading scales\n"
+                + "  \u2022 ALL exams\n"
+                + "  \u2022 ALL subjects (except defaults)\n"
+                + "  \u2022 ALL non-admin users\n\n"
+                + "Settings and admin user will be preserved.\n"
+                + "This CANNOT be undone!",
+                ButtonType.YES, ButtonType.NO);
+            if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
+            seedAction(demoSpinner, demoStatus, "Resetting database...", () -> {
+                new SeedData().hardReset();
+                Platform.runLater(() -> showDashboard());
+                return "Demo database has been reset.";
             });
-            task.setOnFailed(ev -> { demoSpinner.setVisible(false); demoStatus.setText("Error: " + task.getException().getMessage()); });
-            new Thread(task).start();
         });
 
         demoBox.getChildren().addAll(demoLabel, demoBtns, demoStatus);
         view.getChildren().addAll(header, welcome, cards, trendSection, demoBox);
         contentArea.getChildren().setAll(view);
+    }
+
+    private void seedAction(ProgressIndicator spinner, Label status, String loading, SeedAction action) {
+        spinner.setVisible(true);
+        status.setText(loading + "...");
+        Task<String> task = new Task<>() {
+            @Override protected String call() throws Exception {
+                return action.execute();
+            }
+        };
+        task.setOnSucceeded(ev -> {
+            spinner.setVisible(false);
+            status.setText(task.getValue());
+        });
+        task.setOnFailed(ev -> {
+            spinner.setVisible(false);
+            status.setText("Error: " + task.getException().getMessage());
+        });
+        new Thread(task).start();
+    }
+
+    @FunctionalInterface
+    private interface SeedAction {
+        String execute() throws Exception;
     }
 
     private VBox buildExamAnalytics() {
@@ -559,7 +662,7 @@ public class DashboardForm {
                             ps.setLong(1, selectedExamId);
                             try (ResultSet rs = ps.executeQuery()) {
                                 while (rs.next()) {
-                                    String fs = "F" + rs.getInt("form") + " " + rs.getString("stream");
+                                    String fs = "Form " + rs.getInt("form") + " " + rs.getString("stream");
                                     String subj = rs.getString("subject_name");
                                     double avg = rs.getDouble("avg_score");
                                     long sid = rs.getLong("subject_id");
@@ -609,7 +712,7 @@ public class DashboardForm {
             ps.setLong(1, examId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next())
-                    map.put("F" + rs.getInt("form") + " " + rs.getString("stream"), rs.getDouble("avg_score"));
+                    map.put("Form " + rs.getInt("form") + " " + rs.getString("stream"), rs.getDouble("avg_score"));
             }
         }
         return map;

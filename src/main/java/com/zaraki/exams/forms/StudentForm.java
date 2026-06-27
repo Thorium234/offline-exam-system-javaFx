@@ -120,7 +120,41 @@ public class StudentForm {
             }
         });
 
-        table.getColumns().addAll(colId, colAdm, colName, colForm, colStream, colPhoto, colSubj);
+        TableColumn<StudentRow, Void> colEdit = new TableColumn<>("Edit");
+        colEdit.setPrefWidth(60);
+        colEdit.setCellFactory(col -> new TableCell<>() {
+            private final Button btn = new Button("Edit");
+            { btn.setStyle("-fx-font-size: 10; -fx-background-color: #1565c0; -fx-text-fill: white;"); }
+            @Override protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    StudentRow row = getTableRow().getItem();
+                    btn.setOnAction(e -> editStudent(row));
+                    setGraphic(btn);
+                }
+            }
+        });
+
+        TableColumn<StudentRow, Void> colDel = new TableColumn<>("");
+        colDel.setPrefWidth(70);
+        colDel.setCellFactory(col -> new TableCell<>() {
+            private final Button btn = new Button("Delete");
+            { btn.setStyle("-fx-font-size: 10; -fx-background-color: #c62828; -fx-text-fill: white;"); }
+            @Override protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    StudentRow row = getTableRow().getItem();
+                    btn.setOnAction(e -> deleteStudent(row));
+                    setGraphic(btn);
+                }
+            }
+        });
+
+        table.getColumns().addAll(colId, colAdm, colName, colForm, colStream, colPhoto, colSubj, colEdit, colDel);
         table.setPrefHeight(400);
 
         data = FXCollections.observableArrayList();
@@ -247,6 +281,75 @@ public class StudentForm {
                     (Integer) s.get("form"),
                     (String) s.get("stream")));
         } catch (Exception e) { UIUtils.showError(e.getMessage()); }
+    }
+
+    private void editStudent(StudentRow row) {
+        Dialog<StudentRow> dialog = new Dialog<>();
+        dialog.setTitle("Edit Student");
+        dialog.setHeaderText("Edit " + row.getName() + " (" + row.getAdmission() + ")");
+
+        ButtonType saveType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(10);
+        grid.setPadding(new Insets(20));
+
+        TextField admField = new TextField(row.getAdmission());
+        TextField nameField = new TextField(row.getName());
+        TextField formField = new TextField(String.valueOf(row.getForm()));
+        TextField streamField = new TextField(row.getStream());
+
+        grid.add(new Label("Admission:"), 0, 0); grid.add(admField, 1, 0);
+        grid.add(new Label("Name:"), 0, 1); grid.add(nameField, 1, 1);
+        grid.add(new Label("Form:"), 0, 2); grid.add(formField, 1, 2);
+        grid.add(new Label("Stream:"), 0, 3); grid.add(streamField, 1, 3);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(dialogBtn -> {
+            if (dialogBtn == saveType) {
+                String adm = admField.getText().trim();
+                String name = nameField.getText().trim();
+                String fText = formField.getText().trim();
+                String stream = streamField.getText().trim();
+                if (adm.isEmpty() || name.isEmpty() || fText.isEmpty() || stream.isEmpty()) {
+                    UIUtils.showError("All fields are required.");
+                    return null;
+                }
+                try {
+                    int form = Integer.parseInt(fText);
+                    if (form < 1 || form > 4) throw new NumberFormatException();
+                    return new StudentRow(row.getId(), adm, name, form, stream);
+                } catch (NumberFormatException ex) {
+                    UIUtils.showError("Form must be 1-4.");
+                    return null;
+                }
+            }
+            return null;
+        });
+
+        dialog.showAndWait().ifPresent(result -> {
+            try {
+                studentRepo.update(result.getId(), result.getAdmission(), result.getName(),
+                    result.getForm(), result.getStream());
+                load();
+                UIUtils.showInfo("Student updated.");
+            } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
+        });
+    }
+
+    private void deleteStudent(StudentRow row) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+            "Deallocate student '" + row.getName() + "' (" + row.getAdmission() + ")?\n"
+            + "They will be moved to the Recycle Bin.",
+            ButtonType.YES, ButtonType.NO);
+        if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
+        try {
+            studentRepo.deallocate(row.getId());
+            load();
+            UIUtils.showInfo("Student deallocated. Use Recycle Bin to restore.");
+        } catch (Exception ex) { UIUtils.showError("Error: " + ex.getMessage()); }
     }
 
     private void uploadPhoto(StudentRow row) {

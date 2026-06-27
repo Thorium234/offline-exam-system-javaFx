@@ -68,6 +68,16 @@ public class UIUtils {
         box.getItems().addAll(names);
     }
 
+    public static void loadStreamsWithForms(ComboBox<String> box) {
+        var streams = streamRepo.findAllWithStudentCount();
+        box.getItems().clear();
+        for (var s : streams) {
+            int form = (Integer) s.get("form");
+            String stream = (String) s.get("stream");
+            box.getItems().add("Form " + form + " " + stream);
+        }
+    }
+
     public static void loadStreamsInto(Set<String> target) {
         target.clear();
         target.addAll(streamRepo.findAllNames());

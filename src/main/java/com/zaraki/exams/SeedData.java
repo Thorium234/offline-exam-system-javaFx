@@ -1,5 +1,6 @@
 package com.zaraki.exams;
 
+import com.zaraki.exams.auth.PasswordUtils;
 import com.zaraki.exams.database.DatabaseEngine;
 
 import java.sql.*;
@@ -106,6 +107,62 @@ public class SeedData {
                 ps.setString(3, s[2]);
                 ps.setString(4, s[3]);
                 ps.executeUpdate();
+            }
+        }
+    }
+
+    public void seedTeachers() throws SQLException {
+        if (hasTeachers()) return;
+        String sql = "INSERT OR IGNORE INTO users (username, password_hash, salt, full_name, role) VALUES (?,?,?,?,?)";
+        String[][] teachers = {
+            {"teacher1", "Alice Kamau"}, {"teacher2", "Bob Otieno"}, {"teacher3", "Carol Wanjiku"},
+            {"teacher4", "David Mwangi"}, {"teacher5", "Eve Njoroge"}, {"teacher6", "Frank Ochieng"},
+            {"teacher7", "Grace Akinyi"}, {"teacher8", "Henry Barasa"}, {"teacher9", "Ivy Nyambura"},
+            {"teacher10", "Jack Kiprop"}
+        };
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (String[] t : teachers) {
+                String salt = PasswordUtils.generateSalt();
+                String hash = PasswordUtils.hashPassword("teacher", salt);
+                ps.setString(1, t[0]);
+                ps.setString(2, hash);
+                ps.setString(3, salt);
+                ps.setString(4, t[1]);
+                ps.setString(5, "teacher");
+                ps.executeUpdate();
+            }
+        }
+    }
+
+    private boolean hasTeachers() throws SQLException {
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM users WHERE role='teacher'")) {
+            return rs.next() && rs.getInt(1) > 0;
+        }
+    }
+
+    public void hardReset() throws SQLException {
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement()) {
+            conn.setAutoCommit(false);
+            try {
+                st.executeUpdate("DELETE FROM marks");
+                st.executeUpdate("DELETE FROM exam_subjects");
+                st.executeUpdate("DELETE FROM student_subjects");
+                st.executeUpdate("DELETE FROM teacher_subjects");
+                st.executeUpdate("DELETE FROM stream_subjects");
+                st.executeUpdate("DELETE FROM students");
+                st.executeUpdate("DELETE FROM exams");
+                st.executeUpdate("DELETE FROM grading_scales");
+                st.executeUpdate("DELETE FROM users WHERE role != 'admin'");
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
             }
         }
     }

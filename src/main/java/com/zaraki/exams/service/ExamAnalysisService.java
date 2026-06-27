@@ -414,6 +414,10 @@ public class ExamAnalysisService {
     public record MeritReportData(List<MeritSubject> subjects, List<MeritStudent> students) {}
 
     public MeritReportData computeMeritReport(long examId, String filterCol, String groupValue) {
+        return computeMeritReport(examId, filterCol, groupValue, 0);
+    }
+
+    public MeritReportData computeMeritReport(long examId, String filterCol, String groupValue, int form) {
         String validCol = DatabaseEngine.validateFilterColumn(filterCol);
 
         // Subjects
@@ -432,15 +436,27 @@ public class ExamAnalysisService {
         Map<Long, Map<Long, Integer>> points = new HashMap<>();
         List<Long> studentOrder = new ArrayList<>();
 
+        boolean hasForm = form > 0;
         String dataSql;
-        if (validCol.isEmpty()) {
+        if (validCol.isEmpty() && !hasForm) {
             dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? ORDER BY s.id, m.subject_id";
+        } else if (hasForm && !validCol.isEmpty()) {
+            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + validCol + " = ? AND s.form = ? ORDER BY s.id, m.subject_id";
+        } else if (hasForm) {
+            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s.form = ? ORDER BY s.id, m.subject_id";
         } else {
             dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + validCol + " = ? ORDER BY s.id, m.subject_id";
         }
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(dataSql)) {
             ps.setLong(1, examId);
-            if (!validCol.isEmpty()) ps.setString(2, groupValue);
+            if (!validCol.isEmpty() && !hasForm) {
+                ps.setString(2, groupValue);
+            } else if (!validCol.isEmpty()) {
+                ps.setString(2, groupValue);
+                ps.setInt(3, form);
+            } else if (hasForm) {
+                ps.setInt(2, form);
+            }
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 long sid = rs.getLong("id");

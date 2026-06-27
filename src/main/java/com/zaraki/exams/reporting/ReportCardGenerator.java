@@ -620,6 +620,10 @@ public class ReportCardGenerator {
     }
 
     public void generateGroupReport(long examId, String groupBy, String groupValue, Path outputPath) {
+        generateGroupReport(examId, groupBy, groupValue, 0, outputPath);
+    }
+
+    public void generateGroupReport(long examId, String groupBy, String groupValue, int formFilter, Path outputPath) {
         Document doc = new Document(PageSize.A4.rotate(), 20, 20, 25, 25);
         try {
             PdfWriter.getInstance(doc, new FileOutputStream(outputPath.toFile()));
@@ -637,7 +641,12 @@ public class ReportCardGenerator {
                 ResultSet rs = ps.executeQuery();
                 examInfo = rs.next() ? rs.getString("academic_year") + " - " + rs.getString("term") + " - " + rs.getString("exam_series") : "";
             }
-            String groupLabel = groupBy.equals("stream") ? "Stream: " + groupValue : "Form: " + groupValue;
+            String groupLabel;
+            if (formFilter > 0) {
+                groupLabel = "Form " + formFilter + " " + groupValue;
+            } else {
+                groupLabel = groupBy.equals("stream") ? "Stream: " + groupValue : "Form: " + groupValue;
+            }
             Font sf = FontFactory.getFont(FontFactory.HELVETICA, 10);
             Paragraph pInfo = new Paragraph("Exam: " + examInfo + "   |   " + groupLabel, sf);
             pInfo.setAlignment(Element.ALIGN_CENTER);
@@ -646,7 +655,7 @@ public class ReportCardGenerator {
 
             String filterCol = validateFilterColumn(groupBy.equals("stream") ? "stream" : "form");
             com.zaraki.exams.service.ExamAnalysisService analysis = new com.zaraki.exams.service.ExamAnalysisService();
-            var reportData = analysis.computeMeritReport(examId, filterCol, groupValue);
+            var reportData = analysis.computeMeritReport(examId, filterCol, groupValue, formFilter);
 
             var subjects = reportData.subjects();
             var students = reportData.students();

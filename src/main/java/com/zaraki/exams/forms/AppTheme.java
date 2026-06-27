@@ -12,6 +12,16 @@ public class AppTheme {
     public static final String ORANGE = "#e65100";
     public static final String DARK_BLUE = "#1a237e";
 
+    // Dark mode colors
+    public static final String DARK_BG = "#1a1d23";
+    public static final String DARK_SURFACE = "#1e2028";
+    public static final String DARK_CARD = "#242730";
+    public static final String DARK_BORDER = "#2d2f3a";
+    public static final String DARK_TEXT = "#e0e0e0";
+    public static final String DARK_TEXT_SECONDARY = "#9e9e9e";
+    public static final String DARK_ACCENT = "#90caf9";
+    public static final String DARK_INPUT = "#2d2f3a";
+
     public static final String SIDEBAR_ICON_STUDENTS = "\uD83D\uDC65";
     public static final String SIDEBAR_ICON_SUBJECTS = "\uD83D\uDCDA";
     public static final String SIDEBAR_ICON_EXAMS = "\uD83D\uDCCB";

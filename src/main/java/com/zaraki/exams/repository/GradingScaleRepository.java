@@ -17,7 +17,7 @@ public class GradingScaleRepository {
     public List<Map<String, Object>> findAllWithSubject() {
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = """
-            SELECT gs.id, gs.minimum_mark, gs.maximum_mark, gs.grade, gs.points, gs.remarks,
+            SELECT gs.id, gs.subject_id, gs.minimum_mark, gs.maximum_mark, gs.grade, gs.points, gs.remarks,
                    COALESCE(sub.subject_name, '** Global **') AS subject_name
             FROM grading_scales gs
             LEFT JOIN subjects sub ON sub.id = gs.subject_id
@@ -28,6 +28,8 @@ public class GradingScaleRepository {
              ResultSet rs = st.executeQuery(sql)) {
             while (rs.next()) {
                 Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", rs.getLong("id"));
+                row.put("subject_id", rs.getObject("subject_id"));
                 row.put("subject_name", rs.getString("subject_name"));
                 row.put("minimum_mark", rs.getDouble("minimum_mark"));
                 row.put("maximum_mark", rs.getDouble("maximum_mark"));
@@ -82,6 +84,34 @@ public class GradingScaleRepository {
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public void update(long id, Long subjectId, double min, double max, String grade, int points, String remarks) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "UPDATE grading_scales SET subject_id = ?, minimum_mark = ?, maximum_mark = ?, grade = ?, points = ?, remarks = ? WHERE id = ?")) {
+            if (subjectId == null) ps.setNull(1, Types.INTEGER);
+            else ps.setLong(1, subjectId);
+            ps.setDouble(2, min);
+            ps.setDouble(3, max);
+            ps.setString(4, grade);
+            ps.setInt(5, points);
+            ps.setString(6, remarks);
+            ps.setLong(7, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to update grading scale", e);
+        }
+    }
+
+    public void deleteById(long id) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM grading_scales WHERE id = ?")) {
+            ps.setLong(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to delete grading scale", e);
         }
     }
 
