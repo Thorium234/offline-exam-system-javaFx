@@ -61,6 +61,7 @@ public class DashboardForm {
     private StudentBrowserForm studentBrowserForm;
     private RecycleBinForm recycleBinForm;
     private SubjectAssignmentForm subjectAssignmentForm;
+    private Label activeNavLabel;
 
     public DashboardForm(Stage stage, String loggedInUser, String loggedInUsername, String loggedInRole, long loggedInUserId, Runnable onLogout) {
         this.stage = stage;
@@ -78,14 +79,70 @@ public class DashboardForm {
         this.curriculumSwitcher = new ComboBox<>();
     }
 
-    public ScrollPane getView() {
-        HBox root = new HBox();
-        root.getChildren().addAll(createSidebar(), createContent());
-        ScrollPane sp = new ScrollPane(root);
-        sp.setFitToWidth(true);
-        sp.setFitToHeight(true);
-        sp.setStyle("-fx-background-color: transparent; -fx-border: none;");
-        return sp;
+    public VBox getView() {
+        VBox root = new VBox();
+        root.getChildren().addAll(createTopNavbar(), createBody());
+        return root;
+    }
+
+    private HBox createTopNavbar() {
+        HBox topBar = new HBox();
+        topBar.setMinHeight(56);
+        topBar.setPrefHeight(56);
+        topBar.setAlignment(Pos.CENTER_LEFT);
+        topBar.setStyle("-fx-background-color: white; -fx-border-color: #e0e0e0; -fx-border-width: 0 0 1 0;");
+
+        HBox leftSection = new HBox(10);
+        leftSection.setAlignment(Pos.CENTER_LEFT);
+        leftSection.setPadding(new Insets(0, 0, 0, 20));
+
+        ImageView logoView = null;
+        try {
+            Image logo = new Image(getClass().getResourceAsStream("/images/school_logo.jpeg"));
+            logoView = new ImageView(logo);
+            logoView.setFitWidth(28);
+            logoView.setFitHeight(28);
+            logoView.setPreserveRatio(true);
+        } catch (Exception ignored) {}
+
+        Label appTitle = new Label("Exam Analysis Tool");
+        appTitle.setFont(Font.font("System", FontWeight.BOLD, 18));
+        appTitle.setTextFill(Color.web(PRIMARY));
+
+        if (logoView != null) leftSection.getChildren().add(logoView);
+        leftSection.getChildren().add(appTitle);
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox rightSection = new HBox(12);
+        rightSection.setAlignment(Pos.CENTER_RIGHT);
+        rightSection.setPadding(new Insets(0, 20, 0, 0));
+
+        Label userBadge = new Label("\uD83D\uDC64 " + loggedInUser);
+        userBadge.setFont(Font.font("System", 13));
+        userBadge.setTextFill(Color.gray(0.5));
+
+        Button logoutBtn = new Button("\uD83D\uDEAA  Logout");
+        logoutBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #666; -fx-font-size: 13; -fx-background-radius: 6; -fx-cursor: hand;");
+        logoutBtn.setOnAction(e -> {
+            if (onLogout != null) onLogout.run();
+        });
+        logoutBtn.setOnMouseEntered(e ->
+            logoutBtn.setStyle("-fx-background-color: #f5f5f5; -fx-text-fill: #c62828; -fx-font-size: 13; -fx-background-radius: 6; -fx-cursor: hand;"));
+        logoutBtn.setOnMouseExited(e ->
+            logoutBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #666; -fx-font-size: 13; -fx-background-radius: 6; -fx-cursor: hand;"));
+
+        rightSection.getChildren().addAll(userBadge, logoutBtn);
+        topBar.getChildren().addAll(leftSection, spacer, rightSection);
+        return topBar;
+    }
+
+    private HBox createBody() {
+        HBox body = new HBox();
+        VBox.setVgrow(body, Priority.ALWAYS);
+        body.getChildren().addAll(createSidebar(), createContent());
+        return body;
     }
 
     private VBox createSidebar() {
@@ -93,34 +150,6 @@ public class DashboardForm {
         sidebar.setPrefWidth(240);
         sidebar.setPadding(new Insets(20, 12, 20, 12));
         sidebar.setStyle("-fx-background-color: " + PRIMARY + ";");
-
-        HBox branding = new HBox(10);
-        branding.setAlignment(Pos.CENTER_LEFT);
-        ImageView logoView = null;
-        try {
-            Image logo = new Image(getClass().getResourceAsStream("/images/school_logo.jpeg"));
-            logoView = new ImageView(logo);
-            logoView.setFitWidth(32);
-            logoView.setFitHeight(32);
-            logoView.setPreserveRatio(true);
-        } catch (Exception ignored) {}
-
-        VBox titleBlock = new VBox(0);
-        Label title = new Label("THORIUM");
-        title.setFont(Font.font("System", FontWeight.BOLD, 22));
-        title.setTextFill(Color.WHITE);
-
-        Label sub = new Label("Exam Analysis");
-        sub.setFont(Font.font("System", 13));
-        sub.setTextFill(Color.rgb(255, 255, 255, 0.6));
-        titleBlock.getChildren().addAll(title, sub);
-        if (logoView != null) branding.getChildren().add(logoView);
-        branding.getChildren().add(titleBlock);
-
-        Label userBadge = new Label("\uD83D\uDC64 " + loggedInUser);
-        userBadge.setFont(Font.font("System", 11));
-        userBadge.setTextFill(Color.rgb(255, 255, 255, 0.5));
-        userBadge.setPadding(new Insets(5, 0, 5, 0));
 
         curriculumSwitcher.setItems(FXCollections.observableArrayList(
             CurriculumSystem.SYSTEM_844.getDisplayName(),
@@ -134,10 +163,9 @@ public class DashboardForm {
         Label navHeader = new Label("  NAVIGATION");
         navHeader.setFont(Font.font("System", FontWeight.BOLD, 10));
         navHeader.setTextFill(Color.rgb(255, 255, 255, 0.35));
-        navHeader.setPadding(new Insets(12, 0, 4, 0));
+        navHeader.setPadding(new Insets(16, 0, 8, 0));
 
         VBox nav = new VBox(2);
-        nav.setPadding(new Insets(0, 0, 0, 0));
         List<String> navItems;
         if ("teacher".equals(loggedInRole)) {
             navItems = List.of("Dashboard", "Marks Entry", "Bulk Marks");
@@ -157,25 +185,33 @@ public class DashboardForm {
             lbl.setPrefWidth(220);
             lbl.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
             String page = itemName.toLowerCase().replace(" ", "_");
-            lbl.setOnMouseEntered(e ->
-                lbl.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-background-radius: 6;"));
-            lbl.setOnMouseExited(e ->
-                lbl.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;"));
-            lbl.setOnMouseClicked(e -> navigate(page));
+            lbl.setOnMouseEntered(e -> {
+                if (lbl != activeNavLabel) {
+                    lbl.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-background-radius: 6;");
+                }
+            });
+            lbl.setOnMouseExited(e -> {
+                if (lbl != activeNavLabel) {
+                    lbl.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
+                }
+            });
+            lbl.setOnMouseClicked(e -> {
+                navigate(page);
+                setActiveNavLabel(lbl);
+            });
             nav.getChildren().add(lbl);
+        }
+
+        if (!nav.getChildren().isEmpty()) {
+            activeNavLabel = (Label) nav.getChildren().get(0);
+            activeNavLabel.setStyle("-fx-background-color: rgba(255,255,255,0.2); -fx-background-radius: 6;");
+            activeNavLabel.setTextFill(Color.WHITE);
         }
 
         VBox spacer = new VBox();
         VBox.setVgrow(spacer, Priority.ALWAYS);
 
-        Button logoutBtn = new Button("\uD83D\uDEAA  Logout");
-        logoutBtn.setPrefWidth(220);
-        logoutBtn.setStyle("-fx-background-color: rgba(255,255,255,0.1); -fx-text-fill: white; -fx-font-size: 13; -fx-background-radius: 6;");
-        logoutBtn.setOnAction(e -> {
-            if (onLogout != null) onLogout.run();
-        });
-
-        sidebar.getChildren().addAll(branding, userBadge, curriculumSwitcher, navHeader, nav, spacer, logoutBtn);
+        sidebar.getChildren().addAll(curriculumSwitcher, navHeader, nav, spacer);
         return sidebar;
     }
 
@@ -200,6 +236,16 @@ public class DashboardForm {
             case "Recycle Bin" -> AppTheme.SIDEBAR_ICON_RECYCLE;
             default -> "  ";
         };
+    }
+
+    private void setActiveNavLabel(Label label) {
+        if (activeNavLabel != null) {
+            activeNavLabel.setStyle("-fx-background-color: transparent; -fx-background-radius: 6;");
+            activeNavLabel.setTextFill(Color.rgb(255, 255, 255, 0.8));
+        }
+        activeNavLabel = label;
+        activeNavLabel.setStyle("-fx-background-color: rgba(255,255,255,0.2); -fx-background-radius: 6;");
+        activeNavLabel.setTextFill(Color.WHITE);
     }
 
     private ScrollPane createContent() {
