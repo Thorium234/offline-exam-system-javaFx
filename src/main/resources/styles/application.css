@@ -225,14 +225,19 @@
 .split-pane-divider {
     -fx-background-color: #e0e0e0;
 }
-/* Scrollbar hiding for nav */
+/* Navbar horizontal scrollbar */
 .scroll-pane > .scroll-bar:horizontal {
     -fx-background-color: transparent;
-    -fx-pref-height: 4;
+    -fx-pref-height: 8;
+}
+.scroll-pane > .scroll-bar:horizontal .track {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
 }
 .scroll-pane > .scroll-bar:horizontal .thumb {
-    -fx-background-color: rgba(0,0,0,0.15);
-    -fx-background-radius: 2;
+    -fx-background-color: rgba(0,0,0,0.3);
+    -fx-background-radius: 4;
+    -fx-pref-height: 8;
 }
 .scroll-pane > .scroll-bar:horizontal .increment-button,
 .scroll-pane > .scroll-bar:horizontal .decrement-button {
@@ -397,7 +402,8 @@
     -fx-background-color: transparent;
 }
 .dark-mode .scroll-pane > .scroll-bar:horizontal .thumb {
-    -fx-background-color: rgba(255,255,255,0.15);
+    -fx-background-color: rgba(255,255,255,0.35);
+    -fx-background-radius: 4;
 }
 .dark-mode .tab-pane {
     -fx-background-color: #242730;

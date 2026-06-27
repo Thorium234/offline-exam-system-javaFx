@@ -203,11 +203,13 @@ public class DashboardForm {
         divider.setMinWidth(12);
 
         ScrollPane scrollPane = new ScrollPane();
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.ALWAYS);
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scrollPane.setStyle("-fx-background-color: transparent; -fx-border: none;");
         scrollPane.setFitToHeight(true);
+        scrollPane.setFitToWidth(false);
         scrollPane.setPrefHeight(64);
+        scrollPane.setMinHeight(64);
         HBox.setHgrow(scrollPane, Priority.ALWAYS);
 
         HBox navItems = new HBox(2);
