@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.config.SettingsManager;
+import com.zaraki.exams.database.DatabaseBackupService;
 import com.zaraki.exams.util.UIUtils;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
@@ -134,6 +135,10 @@ public class SchoolSettingsForm {
         saveBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;");
         saveBtn.setPrefWidth(200);
 
+        Button backupBtn = new Button("Backup Database");
+        backupBtn.setStyle("-fx-background-color: #e65100; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;");
+        backupBtn.setPrefWidth(200);
+
         statusLabel = UIUtils.makeStatusLabel();
 
         // ── Events ──
@@ -197,6 +202,29 @@ public class SchoolSettingsForm {
             statusLabel.setTextFill(Color.GREEN);
         });
 
+        backupBtn.setOnAction(e -> {
+            try {
+                String dbPath = System.getProperty("exam.db.path", "");
+                if (dbPath.isEmpty() || dbPath.startsWith("jdbc:sqlite::memory:")) {
+                    java.nio.file.Path p = java.nio.file.Paths.get(System.getProperty("user.dir"), "exam_analysis.db");
+                    if (java.nio.file.Files.exists(p)) dbPath = p.toString();
+                    else { UIUtils.showError("Cannot locate database file for backup."); return; }
+                } else if (dbPath.startsWith("jdbc:sqlite:")) {
+                    dbPath = dbPath.substring("jdbc:sqlite:".length());
+                }
+                java.nio.file.Path backup = DatabaseBackupService.createBackup(dbPath);
+                if (backup != null) {
+                    statusLabel.setText("Backup saved: " + backup.getFileName());
+                    statusLabel.setTextFill(Color.GREEN);
+                    UIUtils.showInfo("Database backup created:\n" + backup.toAbsolutePath());
+                } else {
+                    UIUtils.showError("Backup failed. Check logs for details.");
+                }
+            } catch (Exception ex) {
+                UIUtils.showError("Backup error: " + ex.getMessage());
+            }
+        });
+
         VBox fields = new VBox(12);
         fields.setPadding(new Insets(15));
         fields.setStyle("-fx-background-color: white; -fx-background-radius: 8; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 10, 0, 0, 2);");
@@ -209,7 +237,7 @@ public class SchoolSettingsForm {
             remarkLabel, remarkRows
         );
 
-        view.getChildren().addAll(header, info, fields, saveBtn, statusLabel);
+        view.getChildren().addAll(header, info, fields, saveBtn, backupBtn, statusLabel);
         return view;
     }
 }

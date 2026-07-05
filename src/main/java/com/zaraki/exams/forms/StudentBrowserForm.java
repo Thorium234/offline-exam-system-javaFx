@@ -91,7 +91,9 @@ public class StudentBrowserForm {
         setView(view);
     }
 
-    // ───── Student List with Stream Filter ─────
+    // ───── Student List with Stream Filter & Pagination ─────
+
+    private static final int PAGE_SIZE = 20;
 
     private void showStudentList(int form) {
         VBox view = new VBox(15);
@@ -146,77 +148,123 @@ public class StudentBrowserForm {
         table.getColumns().addAll(colSel, colId, colAdm, colName, colStream);
         ObservableList<StudentRow> data = FXCollections.observableArrayList();
 
+        // Pagination state
+        final int[] currentPage = {1};
+        final int[] totalCount = {0};
+        Label pageLabel = new Label();
+        pageLabel.setFont(Font.font("System", 12));
+        pageLabel.setTextFill(Color.gray(0.5));
+        Button prevBtn = new Button("◀ Previous");
+        Button nextBtn = new Button("Next ▶");
+        prevBtn.setStyle("-fx-background-color: " + PRIMARY + "; -fx-text-fill: white; -fx-font-size: 11;");
+        nextBtn.setStyle("-fx-background-color: " + PRIMARY + "; -fx-text-fill: white; -fx-font-size: 11;");
+        prevBtn.setDisable(true);
+        nextBtn.setDisable(true);
+
         ProgressIndicator spinner = new ProgressIndicator();
         spinner.setPrefSize(24, 24);
 
-        Task<Void> loadTask = new Task<>() {
-            @Override protected Void call() {
-                List<String> streams = new ArrayList<>();
-                List<StudentRow> rows = new ArrayList<>();
-                try (Connection conn = db.getConnection();
-                     PreparedStatement ps = conn.prepareStatement(
-                         "SELECT id, admission_number, full_name, stream FROM students "
-                         + "WHERE form = ? AND deallocated = 0 ORDER BY admission_number")) {
-                    ps.setInt(1, form);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String stream = rs.getString("stream");
-                            if (!streams.contains(stream)) streams.add(stream);
-                            rows.add(new StudentRow(rs.getLong("id"),
-                                rs.getString("admission_number"),
-                                rs.getString("full_name"),
-                                stream));
-                        }
-                    }
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-                Platform.runLater(() -> {
-                    for (String s : streams) {
-                        HBox streamItem = new HBox(5);
-
-                        ToggleButton tb = new ToggleButton(s);
-                        tb.setStyle("-fx-background-color: white; -fx-border-color: " + PRIMARY + ";"
-                            + " -fx-border-radius: 15; -fx-background-radius: 15;"
-                            + " -fx-text-fill: " + PRIMARY + "; -fx-font-size: 12;"
-                            + " -fx-padding: 5 15 5 15;");
-                        tb.setOnAction(ev -> {
-                            if (tb.isSelected()) {
-                                streamCards.getChildren().stream()
-                                    .filter(n -> n instanceof HBox)
-                                    .flatMap(h -> ((HBox)h).getChildren().stream())
-                                    .filter(n -> n instanceof ToggleButton && n != tb)
-                                    .forEach(n -> ((ToggleButton)n).setSelected(false));
-                                table.setItems(data.filtered(r -> r.streamName.equals(s)));
-                            } else {
-                                table.setItems(data);
+        // Shared load function
+        java.util.function.BiConsumer<Integer, Integer> loadPage = new java.util.function.BiConsumer<>() {
+            @Override public void accept(Integer page, Integer formVal) {
+                int offset = (page - 1) * PAGE_SIZE;
+                spinner.setVisible(true);
+                Task<Void> task = new Task<>() {
+                    @Override protected Void call() {
+                        List<String> streams = new ArrayList<>();
+                        List<StudentRow> rows = new ArrayList<>();
+                        int total = 0;
+                        try (Connection conn = db.getConnection()) {
+                            try (PreparedStatement countPs = conn.prepareStatement(
+                                    "SELECT COUNT(*) FROM students WHERE form = ? AND deallocated = 0")) {
+                                countPs.setInt(1, formVal);
+                                ResultSet crs = countPs.executeQuery();
+                                if (crs.next()) total = crs.getInt(1);
                             }
+                            try (PreparedStatement ps = conn.prepareStatement(
+                                    "SELECT id, admission_number, full_name, stream FROM students "
+                                    + "WHERE form = ? AND deallocated = 0 ORDER BY admission_number LIMIT ? OFFSET ?")) {
+                                ps.setInt(1, formVal);
+                                ps.setInt(2, PAGE_SIZE);
+                                ps.setInt(3, offset);
+                                try (ResultSet rs = ps.executeQuery()) {
+                                    while (rs.next()) {
+                                        String stream = rs.getString("stream");
+                                        if (!streams.contains(stream)) streams.add(stream);
+                                        rows.add(new StudentRow(rs.getLong("id"),
+                                            rs.getString("admission_number"),
+                                            rs.getString("full_name"),
+                                            stream));
+                                    }
+                                }
+                            }
+                        } catch (SQLException e) {
+                            throw new RuntimeException(e);
+                        }
+                        int totalPages = Math.max(1, (int) Math.ceil((double) total / PAGE_SIZE));
+                        int finalTotal = total;
+                        javafx.application.Platform.runLater(() -> {
+                            streamCards.getChildren().removeIf(n -> n instanceof HBox);
+                            for (String s : streams) {
+                                HBox streamItem = new HBox(5);
+                                ToggleButton tb = new ToggleButton(s);
+                                tb.setStyle("-fx-background-color: white; -fx-border-color: " + PRIMARY + ";"
+                                    + " -fx-border-radius: 15; -fx-background-radius: 15;"
+                                    + " -fx-text-fill: " + PRIMARY + "; -fx-font-size: 12;"
+                                    + " -fx-padding: 5 15 5 15;");
+                                tb.setOnAction(ev -> {
+                                    if (tb.isSelected()) {
+                                        streamCards.getChildren().stream()
+                                            .filter(n -> n instanceof HBox)
+                                            .flatMap(h -> ((HBox)h).getChildren().stream())
+                                            .filter(n -> n instanceof ToggleButton && n != tb)
+                                            .forEach(n -> ((ToggleButton)n).setSelected(false));
+                                        table.setItems(data.filtered(r -> r.streamName.equals(s)));
+                                    } else {
+                                        table.setItems(data);
+                                    }
+                                    updateStatus(statusLabel, table);
+                                });
+                                Button subjBtn = new Button("Subjects");
+                                subjBtn.setStyle("-fx-background-color: " + PRIMARY + "; -fx-text-fill: white;"
+                                    + " -fx-font-size: 10; -fx-padding: 4 10 4 10; -fx-background-radius: 12;");
+                                int f = formVal;
+                                String fs = s;
+                                subjBtn.setOnAction(ev -> showSubjectAssignment(f, fs));
+                                streamItem.getChildren().addAll(tb, subjBtn);
+                                streamCards.getChildren().add(streamItem);
+                            }
+                            data.setAll(rows);
+                            table.setItems(data);
+                            spinner.setVisible(false);
+                            pageLabel.setText("Page " + page + " of " + totalPages + " (" + finalTotal + " total)");
+                            prevBtn.setDisable(page <= 1);
+                            nextBtn.setDisable(page >= totalPages);
                             updateStatus(statusLabel, table);
                         });
-
-                        Button subjBtn = new Button("Subjects");
-                        subjBtn.setStyle("-fx-background-color: " + PRIMARY + "; -fx-text-fill: white;"
-                            + " -fx-font-size: 10; -fx-padding: 4 10 4 10; -fx-background-radius: 12;");
-                        int finalForm = form;
-                        String finalStream = s;
-                        subjBtn.setOnAction(ev -> showSubjectAssignment(finalForm, finalStream));
-
-                        streamItem.getChildren().addAll(tb, subjBtn);
-                        streamCards.getChildren().add(streamItem);
+                        return null;
                     }
-                    data.setAll(rows);
-                    table.setItems(data);
+                };
+                task.setOnFailed(ev -> {
                     spinner.setVisible(false);
-                    updateStatus(statusLabel, table);
+                    UIUtils.showError("Failed to load: " + task.getException().getMessage());
                 });
-                return null;
+                new Thread(task).start();
             }
         };
-        loadTask.setOnFailed(ev -> {
-            spinner.setVisible(false);
-            UIUtils.showError("Failed to load: " + loadTask.getException().getMessage());
+
+        prevBtn.setOnAction(e -> {
+            if (currentPage[0] > 1) {
+                currentPage[0]--;
+                loadPage.accept(currentPage[0], form);
+            }
         });
-        new Thread(loadTask).start();
+        nextBtn.setOnAction(e -> {
+            currentPage[0]++;
+            loadPage.accept(currentPage[0], form);
+        });
+
+        loadPage.accept(1, form);
 
         selectAllBtn.setOnAction(e -> {
             for (StudentRow row : table.getItems()) row.setSelected(true);
@@ -264,8 +312,11 @@ public class StudentBrowserForm {
             new Thread(deallocTask).start();
         });
 
+        HBox paginationBar = new HBox(10, prevBtn, pageLabel, nextBtn);
+        paginationBar.setAlignment(Pos.CENTER);
+
         VBox content = new VBox(10);
-        content.getChildren().addAll(header, streamCards, actions, spinner, table);
+        content.getChildren().addAll(header, streamCards, actions, spinner, table, paginationBar);
         view.getChildren().addAll(backBtn, content);
         setView(view);
     }

@@ -2,7 +2,8 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.config.CurriculumSystem;
 import com.zaraki.exams.config.SettingsManager;
-import com.zaraki.exams.repository.GradingScaleRepository;
+import com.zaraki.exams.repository.IGradingScaleRepository;
+import com.zaraki.exams.repository.GradingScaleRepositoryImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -15,14 +16,14 @@ import javafx.scene.layout.*;
 public class GradingScaleForm {
 
     private final SettingsManager settings;
-    private final GradingScaleRepository gradingRepo;
+    private final IGradingScaleRepository gradingRepo;
     private final TableView<ScaleRow> table;
     private final ObservableList<ScaleRow> data;
     private final ComboBox<String> subjectBox;
 
     public GradingScaleForm(SettingsManager settings) {
         this.settings = settings;
-        this.gradingRepo = new GradingScaleRepository();
+        this.gradingRepo = new GradingScaleRepositoryImpl();
         this.table = new TableView<>();
         this.data = FXCollections.observableArrayList();
         this.subjectBox = new ComboBox<>();
@@ -251,6 +252,9 @@ public class GradingScaleForm {
                     (String) s.get("grade"),
                     (Integer) s.get("points"),
                     (String) s.get("remarks")));
+            if (data.isEmpty()) {
+                table.setPlaceholder(new EmptyStatePlaceholder("No grading scales defined. Auto-generate or add one above.", "\uD83C\uDFAF").getView());
+            }
         } catch (Exception e) {
             UIUtils.showError(e.getMessage());
         }

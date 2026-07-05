@@ -3,7 +3,8 @@ package com.zaraki.exams.service;
 import com.zaraki.exams.database.DatabaseEngine;
 import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
 import com.zaraki.exams.model.Mark;
-import com.zaraki.exams.repository.MarksRepository;
+import com.zaraki.exams.repository.IMarksRepository;
+import com.zaraki.exams.repository.MarksRepositoryImpl;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
@@ -13,20 +14,17 @@ import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class ExcelService {
+public class ExcelServiceImpl implements IExcelService {
 
     private final DatabaseEngine db;
-    private final MarksRepository marksRepo;
-    private final ExamAnalysisService analysisService;
+    private final IMarksRepository marksRepo;
+    private final IExamAnalysisService analysisService;
 
-    public ExcelService() {
+    public ExcelServiceImpl() {
         this.db = DatabaseEngine.getInstance();
-        this.marksRepo = new MarksRepository();
-        this.analysisService = new ExamAnalysisService();
+        this.marksRepo = new MarksRepositoryImpl();
+        this.analysisService = new ExamAnalysisServiceImpl();
     }
-
-    public record ImportResult(int totalRows, int marksInserted, int errors, List<String> errorMessages) {}
-    public record StudentImportResult(int totalRows, int inserted, int updated, int errors, List<String> errorMessages) {}
 
     public void generateStudentTemplate(Path outputPath) {
         try (Workbook wb = new XSSFWorkbook()) {
@@ -124,9 +122,7 @@ public class ExcelService {
                         if (stream == null || stream.isBlank()) stream = "General";
 
                         // Check if student exists
-                        PreparedStatement checkPs = null;
-                        try {
-                            checkPs = conn.prepareStatement("SELECT id FROM students WHERE admission_number = ?");
+                        try (PreparedStatement checkPs = conn.prepareStatement("SELECT id FROM students WHERE admission_number = ?")) {
                             checkPs.setString(1, adm.trim());
                             ResultSet rs = checkPs.executeQuery();
                             if (rs.next()) {
@@ -144,8 +140,6 @@ public class ExcelService {
                                 insertPs.executeUpdate();
                                 inserted++;
                             }
-                        } finally {
-                            if (checkPs != null) try { checkPs.close(); } catch (SQLException ignored) {}
                         }
                     }
                     conn.commit();

@@ -1,0 +1,422 @@
+================================================================================
+  EXAM ANALYSIS SYSTEM - IMPROVEMENT IMPLEMENTATION TODO LIST
+================================================================================
+  Priority: [HIGH] [MEDIUM] [LOW]
+================================================================================
+
+
+================================================================================
+  1. ARCHITECTURE & DESIGN
+================================================================================
+
+--------------------------------------------------------------------------------
+1.1  Extract interfaces for all repositories                    [HIGH]
+--------------------------------------------------------------------------------
+  Location:  src/main/java/com/zaraki/exams/repository/
+  Desc:      Create interfaces (e.g., IStudentRepository, IExamRepository, etc.)
+             for all 9 repository classes to enable mocking in tests and reduce
+             coupling.
+  Files:     ExamRepository, GradingScaleRepository, MarksRepository,
+             SettingsRepository, StreamRepository, StudentRepository,
+             SubjectRepository, TeacherSubjectRepository, UserRepository
+  Task:      1.1.1 - Create interface for each repository
+             1.1.2 - Rename existing classes to Impl suffix
+             1.1.3 - Update all references across forms and services
+
+--------------------------------------------------------------------------------
+1.2  Extract interfaces for service classes                     [HIGH]
+--------------------------------------------------------------------------------
+  Location:  src/main/java/com/zaraki/exams/service/
+  Desc:      Create interfaces for ExamAnalysisService and ExcelService.
+  Files:     ExamAnalysisService, ExcelService
+  Task:      1.2.1 - Create IExamAnalysisService interface
+             1.2.2 - Create IExcelService interface
+             1.2.3 - Rename implementations to Impl suffix
+             1.2.4 - Update all references
+
+--------------------------------------------------------------------------------
+1.3  Split large form classes into smaller components          [HIGH]
+--------------------------------------------------------------------------------
+  Location:  src/main/java/com/zaraki/exams/forms/
+  Desc:      Break down the 3 largest forms into focused components.
+
+  --- 1.3.1 - AnalysisForm (1006 lines, 5 tabs)              [HIGH]
+    - Extract BroadsheetTab.java     (tab 1)
+    - Extract SubjectMetricsTab.java (tab 2)
+    - Extract GradeDistributionTab.java (tab 3)
+    - Extract ImprovementTab.java    (tab 4 - Most Improved/Dropped)
+    - Extract MeritListTab.java      (tab 5)
+    - AnalysisForm.java becomes a thin orchestrator (~100 lines)
+
+  --- 1.3.2 - PublishForm (888 lines)                         [HIGH]
+    - Extract TeacherUploadPanel.java   (teacher upload phase)
+    - Extract AdminReleasePanel.java    (admin release phase)
+    - Extract InlineScoreTable.java     (editable score table component)
+    - PublishForm.java orchestrates the two-phase workflow
+
+  --- 1.3.3 - DashboardForm (838 lines)                       [MEDIUM]
+    - Extract NavBar.java              (navigation bar component)
+    - Extract StatCardGrid.java        (statistics card grid)
+    - Extract DemoDataPanel.java       (demo data tools section)
+    - DashboardForm.java as shell
+
+--------------------------------------------------------------------------------
+1.4  Extract duplicated merit list logic                        [HIGH]
+--------------------------------------------------------------------------------
+  Location:  AnalysisForm.java + ReportCardGenerator.java (~300 lines duped)
+  Desc:      The ranking/merit list computation exists in both places.
+             Move to ExamAnalysisService.computeMeritReport() (already exists
+             partially) and remove duplication.
+  Task:      1.4.1 - Verify computeMeritReport() covers all use cases
+             1.4.2 - Add any missing fields (positions, deviations)
+             1.4.3 - Update AnalysisForm to call service method
+             1.4.4 - Update ReportCardGenerator to call service method
+
+--------------------------------------------------------------------------------
+1.5  Move business logic from forms into services              [HIGH]
+--------------------------------------------------------------------------------
+  Location:  All forms/ directory
+  Desc:      Audit all forms for direct Repository + business logic calls.
+             Extract into appropriate service classes.
+  Task:      1.5.1 - Move grade calculation from forms to ExamAnalysisService
+             1.5.2 - Move student import logic from forms to ExcelService
+             1.5.3 - Move report card data gathering from ReportForm to service
+             1.5.4 - Remove direct repository calls from forms (use services)
+
+--------------------------------------------------------------------------------
+1.6  Introduce lightweight dependency injection (manual)        [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  New package: com.zaraki.exams.di
+  Desc:      Create a simple ServiceFactory/AppContainer that wires dependencies
+             via constructor injection. Eliminate static getInstance() calls.
+  Task:      1.6.1 - Create AppContainer.java with eager singleton wiring
+             1.6.2 - Pass DatabaseEngine into repository constructors (not
+                     getInstance() calls internally)
+             1.6.3 - Pass repositories into service constructors
+             1.6.4 - Pass services into form constructors
+             1.6.5 - Update Main.java and Launcher.java to bootstrap container
+
+
+================================================================================
+  2. DATABASE & PERFORMANCE
+================================================================================
+
+--------------------------------------------------------------------------------
+2.1  Move all DB reads off JavaFX thread                        [HIGH]
+--------------------------------------------------------------------------------
+  Location:  Forms that load data on FX thread:
+             - DashboardForm.java (stat cards, exam list)
+             - MarksEntryForm.java (student/subject loading)
+             - ReportForm.java (student data loading)
+             - StudentBrowserForm.java (search)
+             - AnalysisForm.java (tab data loading)
+             - GradingScaleForm.java
+  Desc:      Wrap ALL database queries in javafx.concurrent.Task<Void> with
+             Platform.runLater() for UI updates. Add loading spinners/indicators.
+  Task:      2.1.1 - Audit each form for FX-thread DB calls
+             2.1.2 - Wrap each call in Task + background thread
+             2.1.3 - Add loading state UI (spinner/progress indicator)
+             2.1.4 - Add error handling for failed DB operations
+
+--------------------------------------------------------------------------------
+2.2  Add proper connection release mechanism                   [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  DatabaseEngine.java
+  Desc:      Currently connections are never explicitly released (ThreadLocal
+             keeps them until thread dies). Add releaseConnection() that removes
+             from ThreadLocal and closes the connection.
+  Task:      2.2.1 - Add DatabaseEngine.releaseConnection() method
+             2.2.2 - Create ConnectionManager helper with try-with-resources
+                     pattern for short-lived operations
+             2.2.3 - Update repositories to release connections after queries
+             2.2.4 - Keep ThreadLocal for connection caching per-thread but
+                     allow explicit release
+
+--------------------------------------------------------------------------------
+2.3  Move DB path to configuration                             [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  DatabaseEngine.java line ~15
+  Desc:      Replace hardcoded "jdbc:sqlite:exam_analysis.db" with configurable
+             path (system property with fallback to config file).
+  Task:      2.3.1 - Read from exam.db.path system property first
+             2.3.2 - Fall back to exam_system.properties config file
+             2.3.3 - Default to exam_analysis.db in working directory
+             2.3.4 - Update test configuration to use :memory: or temp dir
+
+--------------------------------------------------------------------------------
+2.4  Add database backup mechanism                              [LOW]
+--------------------------------------------------------------------------------
+  Location:  DatabaseEngine.java or new DatabaseBackup.java
+  Desc:      SQLite is file-based with no built-in backup. Add manual backup
+             (file copy with SQLite checkpoint) before critical operations or
+             on user request.
+  Task:      2.4.1 - Create DatabaseBackupService
+             2.4.2 - Add backup before publish/release operations
+             2.4.3 - Add "Backup Database" button in SchoolSettingsForm
+
+--------------------------------------------------------------------------------
+2.5  Add pagination to student browser                          [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  StudentBrowserForm.java, StudentRepository.java
+  Desc:      Currently hardcoded LIMIT 20 with no pagination controls.
+  Task:      2.5.1 - Add offset/limit parameters to StudentRepository.search()
+             2.5.2 - Add total count query for pagination
+             2.5.3 - Add "Previous/Next" buttons to StudentBrowserForm
+             2.5.4 - Show "Page X of Y" indicator
+
+--------------------------------------------------------------------------------
+2.6  Add caching layer for frequently-read data                [LOW]
+--------------------------------------------------------------------------------
+  Location:  New: com.zaraki.exams.service.CacheService
+  Desc:      Cache grading scales, subject lists, stream lists (infrequently
+             changed, frequently read). Invalidated on write.
+  Task:      2.6.1 - Create simple in-memory cache (ConcurrentHashMap)
+             2.6.2 - Cache grading scales with TTL or write-through
+             2.6.3 - Cache subject/stream lists
+             2.6.4 - Add cache invalidation on relevant write operations
+
+
+================================================================================
+  3. TESTING
+================================================================================
+
+--------------------------------------------------------------------------------
+3.1  Add test isolation - use in-memory SQLite                  [HIGH]
+--------------------------------------------------------------------------------
+  Location:  src/test/java/com/zaraki/exams/
+  Desc:      Tests currently share exam_analysis.db in the project root.
+             Switch to per-class in-memory SQLite (:memory:).
+  Task:      3.1.1 - Create InMemoryDbExtension JUnit 5 Extension
+             3.1.2 - Each test class gets a fresh in-memory DB
+             3.1.3 - Run DDL at start of each test class
+             3.1.4 - Remove shared state between test classes
+             3.1.5 - Remove TestDbConfig.java (replace with extension)
+
+--------------------------------------------------------------------------------
+3.2  Add tests for ExcelService (761 LOC)                      [HIGH]
+--------------------------------------------------------------------------------
+  Location:  src/test/java/com/zaraki/exams/service/
+  Desc:      ExcelService is the largest untested class. Templates and upload
+             parsing are high-risk.
+  Task:      3.2.1 - Test template generation produces valid XLSX
+             3.2.2 - Test template generation with correct headers
+             3.2.3 - Test single-sheet upload processing
+             3.2.4 - Test multi-sheet upload processing
+             3.2.5 - Test student import from Excel
+             3.2.6 - Test edge cases: empty rows, invalid data, missing columns
+             3.2.7 - Test auto-registration of new students from upload
+
+--------------------------------------------------------------------------------
+3.3  Add tests for StudentRepository (342 LOC)                 [HIGH]
+--------------------------------------------------------------------------------
+  Location:  src/test/java/com/zaraki/exams/repository/
+  Desc:      StudentRepository is the most complex repository but untested.
+  Task:      3.3.1 - Test CRUD operations (create, read, update, delete)
+             3.3.2 - Test search by admission number and name (LIKE queries)
+             3.3.3 - Test pagination (offset/limit)
+             3.3.4 - Test soft delete (deallocate) and restore
+             3.3.5 - Test photo BLOB storage/retrieval
+             3.3.6 - Test subject enrollment operations
+             3.3.7 - Test edge cases: duplicate admission, null fields
+
+--------------------------------------------------------------------------------
+3.4  Add tests for remaining repositories                       [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  src/test/java/com/zaraki/exams/repository/
+  Task:      3.4.1 - ExamRepository tests (CRUD, release workflow, previous exam)
+             3.4.2 - MarksRepository tests (batch insert, findByExam)
+             3.4.3 - SubjectRepository tests (CRUD, teacher-scoped queries)
+             3.4.4 - GradingScaleRepository tests (CRUD, presets)
+             3.4.5 - UserRepository tests (CRUD, password change)
+             3.4.6 - StreamRepository tests (CRUD, student counts)
+             3.4.7 - TeacherSubjectRepository tests (assignments)
+
+--------------------------------------------------------------------------------
+3.5  Add tests for ExamAnalysisService                          [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  src/test/java/com/zaraki/exams/service/
+  Desc:      Currently has only 4 minimal tests. Needs comprehensive coverage.
+  Task:      3.5.1 - Test grade determination with normalization (out_of factor)
+             3.5.2 - Test dense ranking with ties
+             3.5.3 - Test subject metrics (mean, std dev, rank)
+             3.5.4 - Test class rankings with various score distributions
+             3.5.5 - Test grade distribution computation
+             3.5.6 - Test exam comparison (most improved/dropped)
+             3.5.7 - Test Best-of-N computation
+             3.5.8 - Test merit report generation
+             3.5.9 - Test edge cases: empty data, single student, all same scores
+
+--------------------------------------------------------------------------------
+3.6  Add tests for PDF generation content verification          [LOW]
+--------------------------------------------------------------------------------
+  Location:  src/test/java/com/zaraki/exams/reporting/
+  Desc:      Currently only checks file existence/size. Should verify content.
+  Task:      3.6.1 - Extract text from generated PDF and verify student names
+             3.6.2 - Verify subject table structure (columns present)
+             3.6.3 - Verify QR code is embedded
+             3.6.4 - Verify summary block values are correct
+             3.6.5 - Test with various grade combinations
+
+--------------------------------------------------------------------------------
+3.7  Add UI smoke tests with TestFX                             [LOW]
+--------------------------------------------------------------------------------
+  Location:  src/test/java/com/zaraki/exams/forms/
+  Desc:      Add basic UI tests using TestFX (Headless JavaFX testing).
+  Task:      3.7.1 - Add TestFX dependency to pom.xml
+             3.7.2 - Test login form renders and accepts credentials
+             3.7.3 - Test navigation works (click nav items)
+             3.7.4 - Test student CRUD flow via UI
+
+
+================================================================================
+  4. CODE QUALITY
+================================================================================
+
+--------------------------------------------------------------------------------
+4.1  Add consistent empty state handling                        [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  All forms/
+  Desc:      When no data exists, some forms show empty tables, others crash.
+  Task:      4.1.1 - Create EmptyStatePlaceholder.java component
+             4.1.2 - Add "No data available" messages with contextual icons
+             4.1.3 - Audit each form for unhandled empty states
+             4.1.4 - Add try/catch guards in data loading callbacks
+
+--------------------------------------------------------------------------------
+4.2  Add input validation throughout forms                      [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  Forms with data entry: MarksEntryForm, StudentForm, SubjectForm,
+             ExamForm, GradingScaleForm, PublishForm, SchoolSettingsForm,
+             TeacherAssignmentForm, SubjectAssignmentForm
+  Task:      4.2.1 - Create ValidationUtils.java with common validators
+                     (non-empty, numeric range, positive, max length, etc.)
+             4.2.2 - Add real-time field validation (red border on invalid)
+             4.2.3 - Add form-level validation before save
+             4.2.4 - Show user-friendly error messages (not stack traces)
+             4.2.5 - Validate: score ranges (0-100), admission number format,
+                     name length, required fields, duplicate prevention
+
+--------------------------------------------------------------------------------
+4.3  Standardize error handling                                 [MEDIUM]
+--------------------------------------------------------------------------------
+  Location:  All forms, services, repositories
+  Desc:      Error handling is inconsistent: some places show Alert dialogs,
+             others print to stderr, others swallow exceptions.
+  Task:      4.3.1 - Create ErrorHandler.java utility class
+             4.3.2 - Standardize on user-friendly Alert dialogs for UI errors
+             4.3.3 - Ensure all DB operations in background threads have
+                     proper exception handling with user notification
+             4.3.4 - Log all exceptions with stack traces via LoggerUtil
+             4.3.5 - Prevent silent failures in batch operations
+
+--------------------------------------------------------------------------------
+4.4  Add logging throughout the application                     [LOW]
+--------------------------------------------------------------------------------
+  Location:  All classes
+  Desc:      Many classes don't log anything. Add structured logging for:
+             - User actions (login, create student, publish marks)
+             - DB operations (queries, batch inserts, errors)
+             - PDF generation (start, complete, errors)
+             - Excel operations (template generation, upload processing)
+  Task:      4.4.1 - Audit current logging coverage
+             4.4.2 - Add entry/exit logging for service methods
+             4.4.3 - Add audit logging for sensitive operations
+             4.4.4 - Add performance logging for background tasks
+
+--------------------------------------------------------------------------------
+4.5  Add JavaDoc to public APIs                                 [LOW]
+--------------------------------------------------------------------------------
+  Location:  All interfaces and public methods
+  Desc:      Once interfaces are created (1.1, 1.2), add JavaDoc documenting
+             parameters, return values, and exceptions.
+  Task:      4.5.1 - Add package-level documentation
+             4.5.2 - Document all interface methods
+             4.5.3 - Document key service methods with parameter constraints
+
+--------------------------------------------------------------------------------
+4.6  Add Checkstyle/static analysis configuration               [LOW]
+--------------------------------------------------------------------------------
+  Location:  pom.xml + new checkstyle.xml
+  Desc:      Add code quality enforcement via Maven plugins.
+  Task:      4.6.1 - Add maven-checkstyle-plugin to pom.xml
+             4.6.2 - Configure Google-style or custom rules
+             4.6.3 - Add spotbugs or error-prone for bug detection
+             4.6.4 - Add PMD for code smell detection
+
+--------------------------------------------------------------------------------
+4.7  Remove dead code and fix typos                             [LOW]
+--------------------------------------------------------------------------------
+  Task:  4.7.1 - Remove unused imports across all files
+         4.7.2 - Remove commented-out code blocks
+         4.7.3 - Remove unused methods/variables
+         4.7.4 - Rename LICENCE.txt -> LICENSE.txt
+
+
+================================================================================
+  EXECUTION ORDER (RECOMMENDED)
+================================================================================
+
+  Phase 1 - Foundation (Architecture & Testing Infrastructure)
+  ------------------------------------------------------------
+    Step 1:  1.1 - Repository interfaces
+    Step 2:  1.2 - Service interfaces
+    Step 3:  3.1 - In-memory test DB (enables all other testing)
+    Step 4:  2.3 - Configurable DB path
+
+  Phase 2 - Test Coverage
+  -----------------------
+    Step 5:  3.2 - ExcelService tests
+    Step 6:  3.3 - StudentRepository tests
+    Step 7:  3.4 - Remaining repository tests
+    Step 8:  3.5 - ExamAnalysisService tests
+
+  Phase 3 - Business Logic Extraction
+  -----------------------------------
+    Step 9:  1.4 - Extract duplicated merit list logic
+    Step 10: 1.5 - Move logic from forms to services
+    Step 11: 1.6 - Dependency injection container
+
+  Phase 4 - UI & Performance
+  ---------------------------
+    Step 12: 1.3 - Split large forms
+    Step 13: 2.1 - Move DB reads off FX thread
+    Step 14: 4.1 - Empty state handling
+    Step 15: 4.2 - Input validation
+
+  Phase 5 - Polish
+  -----------------
+    Step 16: 2.2 - Connection release
+    Step 17: 2.5 - Pagination
+    Step 18: 4.3 - Error handling standardization
+    Step 19: 4.4 - Logging
+    Step 20: 2.4 - Database backup
+    Step 21: 2.6 - Caching
+    Step 22: 3.6 - PDF content tests
+    Step 23: 3.7 - UI tests
+    Step 24: 4.5 - JavaDoc
+    Step 25: 4.6 - Static analysis
+    Step 26: 4.7 - Dead code cleanup
+
+
+================================================================================
+  TOTAL ESTIMATE (rough)
+================================================================================
+  Phase 1:   ~3-4 hours
+  Phase 2:   ~6-8 hours
+  Phase 3:   ~4-6 hours
+  Phase 4:   ~8-12 hours
+  Phase 5:   ~6-10 hours
+  ------------------------------------------------------
+  Total:     ~27-40 hours (depending on experience)
+
+
+================================================================================
+  NOTES
+================================================================================
+  - Each task should produce a single coherent commit.
+  - Run `mvn test` after each task to avoid regression.
+  - Run `mvn compile` and verify no compilation errors.
+  - All new code should match existing style (tabs, bracing, naming).
+  - Do NOT modify form logic until Phase 3 (service extraction) is complete.
+  - Mockito should be used for service/repository tests but NOT for integration
+    tests that test against a real (in-memory) database.

@@ -1,15 +1,18 @@
 package com.zaraki.exams.repository;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
 import java.util.*;
+import java.util.logging.Logger;
 
-public class TeacherSubjectRepository {
+public class TeacherSubjectRepositoryImpl implements ITeacherSubjectRepository {
 
+    private static final Logger LOG = LoggerUtil.getLogger();
     private final DatabaseEngine db;
 
-    public TeacherSubjectRepository() {
+    public TeacherSubjectRepositoryImpl() {
         this.db = DatabaseEngine.getInstance();
     }
 

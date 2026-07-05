@@ -1,7 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.repository.StreamRepository;
+import com.zaraki.exams.repository.IStreamRepository;
+import com.zaraki.exams.repository.StreamRepositoryImpl;
 import com.zaraki.exams.util.UIUtils;
 import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.collections.FXCollections;
@@ -17,7 +18,7 @@ import java.util.TreeSet;
 
 public class StreamManagementForm {
 
-    private final StreamRepository streamRepo;
+    private final IStreamRepository streamRepo;
     private final TableView<StreamRow> table = new TableView<>();
     private final ObservableList<StreamRow> data = FXCollections.observableArrayList();
     private final ComboBox<Integer> formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
@@ -26,7 +27,7 @@ public class StreamManagementForm {
     private Label statusLabel;
 
     public StreamManagementForm(DatabaseEngine db) {
-        this.streamRepo = new StreamRepository();
+        this.streamRepo = new StreamRepositoryImpl();
     }
 
     public Node getView() {
@@ -130,6 +131,9 @@ public class StreamManagementForm {
             var streams = streamRepo.findAllWithStudentCount();
             for (var s : streams)
                 data.add(new StreamRow((int) s.get("form"), (String) s.get("stream"), (int) s.get("cnt")));
+            if (data.isEmpty()) {
+                table.setPlaceholder(new EmptyStatePlaceholder("No streams defined yet. Add a stream above.", "\uD83D\uDCC1").getView());
+            }
         } catch (Exception e) { UIUtils.showError("Error: " + e.getMessage()); }
         table.setItems(data);
         statusLabel.setText(data.size() + " stream(s)");

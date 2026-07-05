@@ -1,19 +1,26 @@
 package com.zaraki.exams.repository;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.CacheService;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
 import java.util.*;
+import java.util.logging.Logger;
 
-public class SubjectRepository {
+public class SubjectRepositoryImpl implements ISubjectRepository {
 
+    private static final Logger LOG = LoggerUtil.getLogger();
+    private static final String CACHE_KEY_ALL = "subjects_all";
     private final DatabaseEngine db;
 
-    public SubjectRepository() {
+    public SubjectRepositoryImpl() {
         this.db = DatabaseEngine.getInstance();
     }
 
     public List<Map<String, Object>> findAll() {
+        List<Map<String, Object>> cached = CacheService.get(CACHE_KEY_ALL);
+        if (cached != null) return cached;
         List<Map<String, Object>> list = new ArrayList<>();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
@@ -30,6 +37,7 @@ public class SubjectRepository {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        CacheService.put(CACHE_KEY_ALL, list);
         return list;
     }
 
@@ -60,6 +68,7 @@ public class SubjectRepository {
             ps.setString(3, department);
             ps.setString(4, grouping);
             ps.executeUpdate();
+            CacheService.remove(CACHE_KEY_ALL);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -70,6 +79,7 @@ public class SubjectRepository {
              PreparedStatement ps = conn.prepareStatement("DELETE FROM subjects WHERE subject_code = ?")) {
             ps.setString(1, code);
             ps.executeUpdate();
+            CacheService.remove(CACHE_KEY_ALL);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

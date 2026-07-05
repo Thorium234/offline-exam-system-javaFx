@@ -2,19 +2,27 @@ package com.zaraki.exams.repository;
 
 import com.zaraki.exams.config.CurriculumSystem;
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.CacheService;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
 import java.util.*;
+import java.util.logging.Logger;
 
-public class GradingScaleRepository {
+public class GradingScaleRepositoryImpl implements IGradingScaleRepository {
 
+    private static final Logger LOG = LoggerUtil.getLogger();
+    private static final String CACHE_KEY_ALL = "grading_scales_all";
+    private static final String CACHE_KEY_COMBO = "subjects_for_combo";
     private final DatabaseEngine db;
 
-    public GradingScaleRepository() {
+    public GradingScaleRepositoryImpl() {
         this.db = DatabaseEngine.getInstance();
     }
 
     public List<Map<String, Object>> findAllWithSubject() {
+        List<Map<String, Object>> cached = CacheService.get(CACHE_KEY_ALL);
+        if (cached != null) return cached;
         List<Map<String, Object>> list = new ArrayList<>();
         String sql = """
             SELECT gs.id, gs.subject_id, gs.minimum_mark, gs.maximum_mark, gs.grade, gs.points, gs.remarks,
@@ -41,10 +49,13 @@ public class GradingScaleRepository {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        CacheService.put(CACHE_KEY_ALL, list);
         return list;
     }
 
     public List<Map<String, Object>> findAllSubjectsForCombo() {
+        List<Map<String, Object>> cached = CacheService.get(CACHE_KEY_COMBO);
+        if (cached != null) return cached;
         List<Map<String, Object>> list = new ArrayList<>();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
@@ -58,13 +69,15 @@ public class GradingScaleRepository {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        CacheService.put(CACHE_KEY_COMBO, list);
         return list;
     }
 
-    public void insert(Long subjectId, double min, double max, String grade, int points, String remarks) {
+    public long insert(Long subjectId, double min, double max, String grade, int points, String remarks) {
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (?,?,?,?,?,?)")) {
+                 "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (?,?,?,?,?,?)",
+                 Statement.RETURN_GENERATED_KEYS)) {
             if (subjectId == null) ps.setNull(1, Types.INTEGER);
             else ps.setLong(1, subjectId);
             ps.setDouble(2, min);
@@ -73,6 +86,10 @@ public class GradingScaleRepository {
             ps.setInt(5, points);
             ps.setString(6, remarks);
             ps.executeUpdate();
+            ResultSet rs = ps.getGeneratedKeys();
+            long id = rs.next() ? rs.getLong(1) : -1;
+            CacheService.remove(CACHE_KEY_ALL);
+            return id;
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -82,6 +99,7 @@ public class GradingScaleRepository {
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement("DELETE FROM grading_scales WHERE subject_id IS NULL")) {
             ps.executeUpdate();
+            CacheService.remove(CACHE_KEY_ALL);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -100,6 +118,7 @@ public class GradingScaleRepository {
             ps.setString(6, remarks);
             ps.setLong(7, id);
             ps.executeUpdate();
+            CacheService.remove(CACHE_KEY_ALL);
         } catch (SQLException e) {
             throw new RuntimeException("Failed to update grading scale", e);
         }
@@ -110,6 +129,7 @@ public class GradingScaleRepository {
              PreparedStatement ps = conn.prepareStatement("DELETE FROM grading_scales WHERE id = ?")) {
             ps.setLong(1, id);
             ps.executeUpdate();
+            CacheService.remove(CACHE_KEY_ALL);
         } catch (SQLException e) {
             throw new RuntimeException("Failed to delete grading scale", e);
         }
@@ -131,6 +151,7 @@ public class GradingScaleRepository {
                 }
                 ps.executeBatch();
                 conn.commit();
+                CacheService.remove(CACHE_KEY_ALL);
             } catch (SQLException ex) {
                 conn.rollback();
                 throw ex;

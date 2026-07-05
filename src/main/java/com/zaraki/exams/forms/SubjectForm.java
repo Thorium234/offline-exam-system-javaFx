@@ -1,7 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.repository.SubjectRepository;
+import com.zaraki.exams.repository.ISubjectRepository;
+import com.zaraki.exams.repository.SubjectRepositoryImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -11,12 +12,12 @@ import javafx.scene.layout.*;
 
 public class SubjectForm {
 
-    private final SubjectRepository subjectRepo;
+    private final ISubjectRepository subjectRepo;
     private final TableView<SubjectRow> table = new TableView<>();
     private final ObservableList<SubjectRow> data = FXCollections.observableArrayList();
 
     public SubjectForm(DatabaseEngine db) {
-        this.subjectRepo = new SubjectRepository();
+        this.subjectRepo = new SubjectRepositoryImpl();
     }
 
     public VBox getView() {
@@ -113,6 +114,9 @@ public class SubjectForm {
                     (String) s.get("subject_name"),
                     (String) s.get("department"),
                     (String) s.get("grouping")));
+            if (data.isEmpty()) {
+                table.setPlaceholder(new EmptyStatePlaceholder("No subjects defined yet. Add a subject above.", "\uD83D\uDCDA").getView());
+            }
         } catch (Exception e) { UIUtils.showError(e.getMessage()); }
     }
 

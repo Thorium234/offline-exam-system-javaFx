@@ -6,24 +6,15 @@ import java.sql.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class ExamAnalysisService {
+public class ExamAnalysisServiceImpl implements IExamAnalysisService {
 
     private final DatabaseEngine db;
 
-    public ExamAnalysisService() {
+    public ExamAnalysisServiceImpl() {
         this.db = DatabaseEngine.getInstance();
     }
 
-    public record SubjectMetrics(long subjectId, String subjectName, String department,
-                                  double meanScore, String meanGrade,
-                                  double stdDev, int subjectRank, int totalCandidates) {}
-
-    public record StudentResult(long studentId, String admissionNumber, String fullName,
-                                 String form, String stream,
-                                 double totalMarks, int totalPoints, double meanPoints,
-                                 String meanGrade, int classRank, int streamRank,
-                                 int classSize, int streamSize) {}
-
+    @Override
     public List<SubjectMetrics> computeSubjectMetrics(long examId) {
         String sql = """
             WITH subject_avgs AS (
@@ -79,6 +70,7 @@ public class ExamAnalysisService {
         }
     }
 
+    @Override
     public List<StudentResult> computeClassRankings(long examId) {
         String sql = """
             SELECT
@@ -111,13 +103,12 @@ public class ExamAnalysisService {
                 int pts = rs.getInt("total_points");
                 if (pts < prevPoints) rank = total;
                 prevPoints = pts;
-                String studentStream = rs.getString("stream");
                 all.add(new StudentResult(
                     rs.getLong("id"),
                     rs.getString("admission_number"),
                     rs.getString("full_name"),
                     rs.getString("form"),
-                    studentStream,
+                    rs.getString("stream"),
                     rs.getDouble("total_marks"),
                     pts,
                     rs.getDouble("mean_points"),
@@ -130,17 +121,17 @@ public class ExamAnalysisService {
             }
 
             Map<String, Long> streamSizes = all.stream()
-                .collect(Collectors.groupingBy(s -> s.stream, Collectors.counting()));
+                .collect(Collectors.groupingBy(s -> s.stream(), Collectors.counting()));
             Map<String, Map<Integer, Integer>> streamRanks = computeStreamRanks(examId, all);
             List<StudentResult> updated = new ArrayList<>();
             for (StudentResult sr : all) {
-                Map<Integer, Integer> sRankMap = streamRanks.getOrDefault(sr.stream, new HashMap<>());
-                int streamRank = sRankMap.getOrDefault((int) sr.totalPoints, 1);
-                int streamSize = streamSizes.getOrDefault(sr.stream, 0L).intValue();
+                Map<Integer, Integer> sRankMap = streamRanks.getOrDefault(sr.stream(), new HashMap<>());
+                int streamRank = sRankMap.getOrDefault((int) sr.totalPoints(), 1);
+                int streamSize = streamSizes.getOrDefault(sr.stream(), 0L).intValue();
                 updated.add(new StudentResult(
-                    sr.studentId, sr.admissionNumber, sr.fullName,
-                    sr.form, sr.stream, sr.totalMarks, sr.totalPoints, sr.meanPoints,
-                    sr.meanGrade, sr.classRank, streamRank, sr.classSize, streamSize
+                    sr.studentId(), sr.admissionNumber(), sr.fullName(),
+                    sr.form(), sr.stream(), sr.totalMarks(), sr.totalPoints(), sr.meanPoints(),
+                    sr.meanGrade(), sr.classRank(), streamRank, sr.classSize(), streamSize
                 ));
             }
             return updated;
@@ -185,6 +176,7 @@ public class ExamAnalysisService {
         }
     }
 
+    @Override
     public Map<Long, Double> getExamStudentTotals(long examId) {
         Map<Long, Double> map = new HashMap<>();
         String sql = "SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks WHERE exam_id = ? GROUP BY student_id";
@@ -200,6 +192,7 @@ public class ExamAnalysisService {
         return map;
     }
 
+    @Override
     public Map<Long, Integer> getExamStudentRanks(long examId) {
         Map<Long, Double> totals = getExamStudentTotals(examId);
         List<Map.Entry<Long, Double>> sorted = new ArrayList<>(totals.entrySet());
@@ -216,6 +209,7 @@ public class ExamAnalysisService {
         return ranks;
     }
 
+    @Override
     public void autoGradeExam(long examId) {
         String fetchSql = """
             SELECT m.exam_id, m.student_id, m.subject_id, m.score
@@ -289,13 +283,7 @@ public class ExamAnalysisService {
         }
     }
 
-    public record GradeDistribution(String subjectName, Map<String, Integer> gradeCounts) {}
-    public record ExamComparison(long studentId, String admissionNumber, String fullName,
-                                   String form, String stream,
-                                   double exam1Total, double exam2Total, double difference,
-                                   int exam1Pos, int exam2Pos, int posChange) {}
-    public record StudentTrend(long examId, String examLabel, double totalPoints) {}
-
+    @Override
     public List<GradeDistribution> computeGradeDistribution(long examId) {
         String sql = """
             SELECT sub.subject_name, m.grade_achieved, COUNT(*) AS cnt
@@ -325,6 +313,7 @@ public class ExamAnalysisService {
         }
     }
 
+    @Override
     public List<ExamComparison> compareExams(long exam1Id, long exam2Id) {
         String sql = """
             SELECT s.id, s.admission_number, s.full_name, s.form, s.stream,
@@ -368,6 +357,7 @@ public class ExamAnalysisService {
         }
     }
 
+    @Override
     public long findPreviousExam(long examId) {
         String sql = "SELECT id FROM exams WHERE id < ? ORDER BY id DESC LIMIT 1";
         try (Connection conn = db.getConnection();
@@ -380,6 +370,7 @@ public class ExamAnalysisService {
         }
     }
 
+    @Override
     public List<StudentTrend> computeStudentTrend(long studentId) {
         String sql = """
             SELECT e.id, e.academic_year || ' ' || e.term || ' ' || e.exam_series AS label,
@@ -403,24 +394,15 @@ public class ExamAnalysisService {
         }
     }
 
-    // ── Merit List ──
-
-    public record MeritSubject(long id, String code, String name) {}
-    public record MeritStudent(long studentId, String admissionNumber, String fullName, String stream,
-                               double totalMarks, int totalPoints, double meanPoints, String meanGrade,
-                               int rank, Map<Long, Double> scores, Map<Long, Double> deviations,
-                               Map<Long, Integer> subjectPositions) {}
-
-    public record MeritReportData(List<MeritSubject> subjects, List<MeritStudent> students) {}
-
+    @Override
     public MeritReportData computeMeritReport(long examId, String filterCol, String groupValue) {
         return computeMeritReport(examId, filterCol, groupValue, 0);
     }
 
+    @Override
     public MeritReportData computeMeritReport(long examId, String filterCol, String groupValue, int form) {
         String validCol = DatabaseEngine.validateFilterColumn(filterCol);
 
-        // Subjects
         List<MeritSubject> subjects = new ArrayList<>();
         String subjSql = "SELECT DISTINCT sub.id, sub.subject_code, sub.subject_name FROM marks m JOIN subjects sub ON sub.id = m.subject_id WHERE m.exam_id = ? ORDER BY sub.subject_name";
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(subjSql)) {
@@ -430,7 +412,6 @@ public class ExamAnalysisService {
                 subjects.add(new MeritSubject(rs.getLong("id"), rs.getString("subject_code"), rs.getString("subject_name")));
         } catch (SQLException e) { throw new RuntimeException("Failed to load subjects", e); }
 
-        // Students + marks
         Map<Long, String[]> studentInfo = new LinkedHashMap<>();
         Map<Long, Map<Long, Double>> scores = new HashMap<>();
         Map<Long, Map<Long, Integer>> points = new HashMap<>();
@@ -472,7 +453,6 @@ public class ExamAnalysisService {
             }
         } catch (SQLException e) { throw new RuntimeException("Failed to load student marks", e); }
 
-        // Subject means
         Map<Long, Double> means = new HashMap<>();
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement("SELECT subject_id, AVG(score) AS m FROM marks WHERE exam_id = ? GROUP BY subject_id")) {
             ps.setLong(1, examId);
@@ -480,7 +460,6 @@ public class ExamAnalysisService {
             while (rs.next()) means.put(rs.getLong("subject_id"), rs.getDouble("m"));
         } catch (SQLException e) { throw new RuntimeException("Failed to compute subject means", e); }
 
-        // Subject positions (dense ranking per subject)
         Map<Long, Map<Long, Integer>> subjectPositions = new HashMap<>();
         Map<Long, List<Map.Entry<Long, Double>>> subjScoreList = new HashMap<>();
         for (var se : scores.entrySet()) {
@@ -502,7 +481,6 @@ public class ExamAnalysisService {
             }
         }
 
-        // Compute totals & sort
         record Srd(long id, String adm, String name, String stream, double totalMarks, int totalPts) {}
         List<Srd> ranked = new ArrayList<>();
         for (long sid : studentOrder) {
@@ -515,7 +493,6 @@ public class ExamAnalysisService {
         }
         ranked.sort((a, b) -> Integer.compare(b.totalPts, a.totalPts));
 
-        // Build results
         List<MeritStudent> resultStudents = new ArrayList<>();
         int rank = 0, prevPts = Integer.MAX_VALUE;
         for (int i = 0; i < ranked.size(); i++) {
@@ -549,6 +526,7 @@ public class ExamAnalysisService {
         return new MeritReportData(subjects, resultStudents);
     }
 
+    @Override
     public String determineGradeAndPoints(double score, Long subjectId, Long examId) {
         double normalizedScore = normalizeByOutOf(score, subjectId, examId);
         String sql = """
@@ -573,6 +551,7 @@ public class ExamAnalysisService {
         }
     }
 
+    @Override
     public List<MeritSubject> getSubjectsForExam(long examId) {
         List<MeritSubject> list = new ArrayList<>();
         String sql = "SELECT DISTINCT sub.id, sub.subject_code, sub.subject_name FROM marks m "
@@ -586,6 +565,7 @@ public class ExamAnalysisService {
         return list;
     }
 
+    @Override
     public int computeBestOfNPoints(long studentId, long examId, int n) {
         String sql = "SELECT points_achieved FROM marks WHERE student_id = ? AND exam_id = ? "
             + "AND (status IS NULL OR status = 'P') AND points_achieved IS NOT NULL "
@@ -601,6 +581,7 @@ public class ExamAnalysisService {
         } catch (SQLException e) { return 0; }
     }
 
+    @Override
     public String meanPointsToGrade(double meanPoints) {
         String sql = "SELECT grade FROM grading_scales WHERE subject_id IS NULL AND points <= ? ORDER BY points DESC LIMIT 1";
         try (Connection conn = db.getConnection();
@@ -614,10 +595,12 @@ public class ExamAnalysisService {
         }
     }
 
+    @Override
     public String computeMeanGradeFromPoints(double meanPoints) {
         return meanPointsToGrade(meanPoints);
     }
 
+    @Override
     public double computeDeviation(long studentId, long examId, long subjectId) {
         double studentScore = 0;
         double classAvg = 0;
@@ -636,6 +619,7 @@ public class ExamAnalysisService {
         return classAvg > 0 ? Math.round((studentScore - classAvg) * 10.0) / 10.0 : 0;
     }
 
+    @Override
     public double normalizeByOutOf(double score, Long subjectId, Long examId) {
         if (examId == null || subjectId == null) return score;
         String sql = "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?";
@@ -654,15 +638,7 @@ public class ExamAnalysisService {
         }
     }
 
-    // ─────────── Zeraki-style Analysis Enhancements ───────────
-
-    public record ExamSummary(int totalStudents, int totalSubjects,
-                               double overallMean, double highestScore, double lowestScore,
-                               int passCount, int totalCount,
-                               String bestSubject, String worstSubject) {
-        public double passRate() { return totalCount > 0 ? Math.round((double) passCount / totalCount * 1000.0) / 10.0 : 0; }
-    }
-
+    @Override
     public ExamSummary computeExamSummary(long examId) {
         String overviewSql = """
             SELECT
@@ -711,10 +687,8 @@ public class ExamAnalysisService {
             ps3.setLong(1, examId);
             ResultSet rs3 = ps3.executeQuery();
             String bestSubject = "", worstSubject = "";
-            List<String> names = new ArrayList<>();
             while (rs3.next()) {
                 String n = rs3.getString("subject_name");
-                names.add(n);
                 if (bestSubject.isEmpty()) bestSubject = n;
                 worstSubject = n;
             }
@@ -726,8 +700,7 @@ public class ExamAnalysisService {
         }
     }
 
-    public record WeakArea(String subjectName, double meanScore, String grade) {}
-
+    @Override
     public List<WeakArea> computeWeakAreas(long examId) {
         String sql = """
             SELECT sub.subject_name, ROUND(AVG(m.score), 1) AS mean_score
@@ -753,8 +726,7 @@ public class ExamAnalysisService {
         }
     }
 
-    public record ClassTrend(long examId, String examLabel, double meanScore) {}
-
+    @Override
     public List<ClassTrend> computeClassTrends() {
         String sql = """
             SELECT e.id, e.academic_year || ' ' || e.term || ' ' || e.exam_series AS label,
@@ -775,8 +747,7 @@ public class ExamAnalysisService {
         }
     }
 
-    public record StudentWeakArea(String subjectName, double score, String grade, double classMean, double deviation) {}
-
+    @Override
     public List<StudentWeakArea> computeStudentWeakAreas(long examId, long studentId) {
         String sql = """
             SELECT sub.subject_name, m.score, m.grade_achieved,

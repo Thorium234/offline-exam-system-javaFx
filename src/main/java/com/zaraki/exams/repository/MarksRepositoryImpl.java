@@ -2,6 +2,7 @@ package com.zaraki.exams.repository;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.model.Mark;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -9,9 +10,11 @@ import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Logger;
 
-public class MarksRepository {
+public class MarksRepositoryImpl implements IMarksRepository {
 
+    private static final Logger LOG = LoggerUtil.getLogger();
     private static final String INSERT_SQL = """
         INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status, teacher_comment, teacher_name, deviation)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -19,7 +22,7 @@ public class MarksRepository {
 
     private final DatabaseEngine db;
 
-    public MarksRepository() {
+    public MarksRepositoryImpl() {
         this.db = DatabaseEngine.getInstance();
     }
 

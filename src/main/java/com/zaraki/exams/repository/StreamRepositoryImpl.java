@@ -1,15 +1,20 @@
 package com.zaraki.exams.repository;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.CacheService;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
 import java.util.*;
+import java.util.logging.Logger;
 
-public class StreamRepository {
+public class StreamRepositoryImpl implements IStreamRepository {
 
+    private static final Logger LOG = LoggerUtil.getLogger();
+    private static final String CACHE_KEY_NAMES = "stream_names";
     private final DatabaseEngine db;
 
-    public StreamRepository() {
+    public StreamRepositoryImpl() {
         this.db = DatabaseEngine.getInstance();
     }
 
@@ -37,6 +42,8 @@ public class StreamRepository {
     }
 
     public Set<String> findAllNames() {
+        Set<String> cached = CacheService.get(CACHE_KEY_NAMES);
+        if (cached != null) return cached;
         Set<String> names = new TreeSet<>();
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
@@ -45,6 +52,7 @@ public class StreamRepository {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        CacheService.put(CACHE_KEY_NAMES, names, 600);
         return names;
     }
 
@@ -55,6 +63,7 @@ public class StreamRepository {
             ps.setInt(1, form);
             ps.setString(2, stream);
             ps.executeUpdate();
+            CacheService.remove(CACHE_KEY_NAMES);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -67,6 +76,7 @@ public class StreamRepository {
             ps.setInt(1, form);
             ps.setString(2, stream);
             ps.executeUpdate();
+            CacheService.remove(CACHE_KEY_NAMES);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

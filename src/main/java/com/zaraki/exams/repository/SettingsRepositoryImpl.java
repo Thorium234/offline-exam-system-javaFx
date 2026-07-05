@@ -1,15 +1,18 @@
 package com.zaraki.exams.repository;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
+import java.util.logging.Logger;
 
-public class SettingsRepository {
+public class SettingsRepositoryImpl implements ISettingsRepository {
 
+    private static final Logger LOG = LoggerUtil.getLogger();
     private final DatabaseEngine db;
     private static boolean tableEnsured = false;
 
-    public SettingsRepository() {
+    public SettingsRepositoryImpl() {
         this.db = DatabaseEngine.getInstance();
         ensureTable();
     }
