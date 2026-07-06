@@ -37,7 +37,8 @@ class UserRepositoryTest extends DatabaseTestBase {
         repo.insert("user1", PasswordUtils.hashPassword("pass", salt1), salt1, "User One", "teacher");
         repo.insert("user2", PasswordUtils.hashPassword("pass", salt2), salt2, "User Two", "admin");
         var all = repo.findAll();
-        assertEquals(2, all.size());
+        // admin is pre-seeded + 2 inserted
+        assertEquals(3, all.size());
     }
 
     @Test
@@ -45,7 +46,9 @@ class UserRepositoryTest extends DatabaseTestBase {
         String salt = PasswordUtils.generateSalt();
         repo.insert("testuser", PasswordUtils.hashPassword("pass", salt), salt, "Test", "teacher");
         assertNotNull(repo.findByUsername("testuser"));
-        repo.delete(1L);
+        long id = repo.resolveUserId("testuser");
+        assertTrue(id > 0);
+        repo.delete(id);
         assertNull(repo.findByUsername("testuser"));
     }
 

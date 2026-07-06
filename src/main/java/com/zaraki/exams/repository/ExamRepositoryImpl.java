@@ -121,7 +121,11 @@ public class ExamRepositoryImpl implements IExamRepository {
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery("SELECT MIN(id) FROM exams")) {
-            return rs.next() ? rs.getLong(1) : -1;
+            if (rs.next()) {
+                long id = rs.getLong(1);
+                return rs.wasNull() ? -1 : id;
+            }
+            return -1;
         } catch (SQLException e) {
             return -1;
         }

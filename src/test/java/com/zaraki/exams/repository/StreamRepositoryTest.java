@@ -37,7 +37,7 @@ class StreamRepositoryTest extends DatabaseTestBase {
         repo.updateStudentsStreamToGeneral(1, "East");
 
         var streams = repo.findAllWithStudentCount();
-        assertEquals(0L, streams.get(0).get("cnt"));
+        assertEquals(0, streams.get(0).get("cnt"));
     }
 
     @Test

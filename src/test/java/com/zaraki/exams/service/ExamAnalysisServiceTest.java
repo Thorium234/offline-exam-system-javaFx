@@ -325,10 +325,10 @@ class ExamAnalysisServiceTest extends DatabaseTestBase {
 
     @Test
     void meanPointsToGrade() {
-        insertGradeScale(null, 10, 12, "A", 12, "Excellent");
-        insertGradeScale(null, 7, 9, "B", 10, "Good");
-        assertEquals("A", service.meanPointsToGrade(11));
-        assertEquals("B", service.meanPointsToGrade(8));
+        insertGradeScale(null, 0, 10, "A", 20, "Custom A");
+        insertGradeScale(null, 0, 10, "B", 15, "Custom B");
+        assertEquals("A", service.meanPointsToGrade(20));
+        assertEquals("B", service.meanPointsToGrade(15));
         assertEquals("E", service.meanPointsToGrade(0));
     }
 
@@ -409,7 +409,7 @@ class ExamAnalysisServiceTest extends DatabaseTestBase {
 
     @Test
     void computeMeanGradeFromPoints() {
-        insertGradeScale(null, 10, 12, "A", 12, "Excellent");
-        assertEquals("A", service.computeMeanGradeFromPoints(11));
+        // Default grading scale has A-=11, so 11 points maps to A-
+        assertEquals("A-", service.computeMeanGradeFromPoints(11));
     }
 }

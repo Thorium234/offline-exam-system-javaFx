@@ -42,26 +42,35 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             ps.setLong(1, examId);
             ps.setLong(2, examId);
             ResultSet rs = ps.executeQuery();
-            List<SubjectMetrics> list = new ArrayList<>();
+            // Collect raw data first (avoid nested queries on same connection)
+            List<Long> ids = new ArrayList<>();
+            List<String> names = new ArrayList<>();
+            List<String> depts = new ArrayList<>();
+            List<Double> means = new ArrayList<>();
+            List<Double> devs = new ArrayList<>();
+            List<Integer> counts = new ArrayList<>();
             int rank = 0;
             double prevMean = Double.MAX_VALUE;
             while (rs.next()) {
                 double mean = rs.getDouble("mean_score");
-                if (mean < prevMean) rank = list.size() + 1;
+                if (mean < prevMean) rank = ids.size() + 1;
                 prevMean = mean;
-                double stdDev = rs.getDouble("std_dev");
-                long subjectId = rs.getLong("id");
-                String gp = determineGradeAndPoints(mean, subjectId, examId);
+                ids.add(rs.getLong("id"));
+                names.add(rs.getString("subject_name"));
+                depts.add(rs.getString("department"));
+                means.add(mean);
+                devs.add(rs.getDouble("std_dev"));
+                counts.add(rs.getInt("candidates"));
+            }
+            rs.close();
+            ps.close();
+            List<SubjectMetrics> list = new ArrayList<>();
+            for (int i = 0; i < ids.size(); i++) {
+                String gp = determineGradeAndPoints(means.get(i), ids.get(i), examId);
                 String meanGrade = gp.split("\\|")[0];
                 list.add(new SubjectMetrics(
-                    subjectId,
-                    rs.getString("subject_name"),
-                    rs.getString("department"),
-                    mean,
-                    meanGrade,
-                    stdDev,
-                    rank,
-                    rs.getInt("candidates")
+                    ids.get(i), names.get(i), depts.get(i),
+                    means.get(i), meanGrade, devs.get(i), rank + i, counts.get(i)
                 ));
             }
             return list;
@@ -94,6 +103,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             ResultSet rs = ps.executeQuery();
 
             List<StudentResult> all = new ArrayList<>();
+            List<Double> meanPtsList = new ArrayList<>();
             int rank = 0;
             int prevPoints = Integer.MAX_VALUE;
             int total = 0;
@@ -103,6 +113,8 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
                 int pts = rs.getInt("total_points");
                 if (pts < prevPoints) rank = total;
                 prevPoints = pts;
+                double meanPts = rs.getDouble("mean_points");
+                meanPtsList.add(meanPts);
                 all.add(new StudentResult(
                     rs.getLong("id"),
                     rs.getString("admission_number"),
@@ -111,12 +123,24 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
                     rs.getString("stream"),
                     rs.getDouble("total_marks"),
                     pts,
-                    rs.getDouble("mean_points"),
-                    meanPointsToGrade(rs.getDouble("mean_points")),
+                    meanPts,
+                    null, // placeholder
                     rank,
                     0,
                     total,
                     0
+                ));
+            }
+            rs.close();
+            ps.close();
+            // Compute mean grades after closing the result set
+            for (int i = 0; i < all.size(); i++) {
+                StudentResult sr = all.get(i);
+                String grade = meanPointsToGrade(meanPtsList.get(i));
+                all.set(i, new StudentResult(
+                    sr.studentId(), sr.admissionNumber(), sr.fullName(),
+                    sr.form(), sr.stream(), sr.totalMarks(), sr.totalPoints(), sr.meanPoints(),
+                    grade, sr.classRank(), 0, sr.classSize(), 0
                 ));
             }
 
@@ -713,12 +737,18 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, examId);
             ResultSet rs = ps.executeQuery();
-            List<WeakArea> list = new ArrayList<>();
+            List<String> subjectNames = new ArrayList<>();
+            List<Double> meanScores = new ArrayList<>();
             while (rs.next()) {
-                String name = rs.getString("subject_name");
-                double meanScore = rs.getDouble("mean_score");
-                String grade = determineGradeAndPoints(meanScore, null, examId).split("\\|")[0];
-                list.add(new WeakArea(name, meanScore, grade));
+                subjectNames.add(rs.getString("subject_name"));
+                meanScores.add(rs.getDouble("mean_score"));
+            }
+            rs.close();
+            ps.close();
+            List<WeakArea> list = new ArrayList<>();
+            for (int i = 0; i < subjectNames.size(); i++) {
+                String grade = determineGradeAndPoints(meanScores.get(i), null, examId).split("\\|")[0];
+                list.add(new WeakArea(subjectNames.get(i), meanScores.get(i), grade));
             }
             return list;
         } catch (SQLException e) {

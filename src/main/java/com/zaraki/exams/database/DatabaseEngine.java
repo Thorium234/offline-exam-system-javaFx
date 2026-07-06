@@ -3,17 +3,38 @@ package com.zaraki.exams.database;
 import com.zaraki.exams.auth.PasswordUtils;
 import com.zaraki.exams.util.LoggerUtil;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Properties;
 
 public class DatabaseEngine {
 
-    private static String dbUrl = "jdbc:sqlite:" + System.getProperty("exam.db.path", "exam_analysis.db");
+    private static String dbUrl = "jdbc:sqlite:" + resolveDbPath();
     private static volatile DatabaseEngine instance;
+
+    private static String resolveDbPath() {
+        String path = System.getProperty("exam.db.path");
+        if (path != null && !path.isEmpty()) return path;
+        if (Files.exists(Paths.get("exam_system.properties"))) {
+            Properties props = new Properties();
+            try (FileInputStream fis = new FileInputStream("exam_system.properties")) {
+                props.load(fis);
+                String cfgPath = props.getProperty("exam.db.path");
+                if (cfgPath != null && !cfgPath.isEmpty()) return cfgPath;
+            } catch (IOException e) {
+                // fall through to default
+            }
+        }
+        return "exam_analysis.db";
+    }
 
     public static void setDbPath(String path) {
         synchronized (DatabaseEngine.class) {
@@ -40,12 +61,7 @@ public class DatabaseEngine {
                 executeDDL(conn);
             }
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                // Best-effort close for the shutdown hook's own thread-local
-                try {
-                    Connection c = connectionHolder.get();
-                    if (c != null && !c.isClosed()) c.close();
-                } catch (SQLException ignored) {}
-                connectionHolder.remove();
+                releaseConnection();
             }));
         } catch (ClassNotFoundException e) {
             throw new RuntimeException("SQLite JDBC driver not found", e);
@@ -93,6 +109,32 @@ public class DatabaseEngine {
             return conn;
         } catch (SQLException e) {
             throw new RuntimeException("Failed to obtain database connection", e);
+        }
+    }
+
+    public void releaseConnection() {
+        try {
+            Connection c = connectionHolder.get();
+            if (c != null && !c.isClosed()) {
+                c.close();
+            }
+        } catch (SQLException e) {
+            LoggerUtil.warn("Error closing connection: " + e.getMessage());
+        }
+        connectionHolder.remove();
+    }
+
+    public void releaseConnection(Connection conn) {
+        if (conn == null) return;
+        try {
+            Connection held = connectionHolder.get();
+            if (conn == held) {
+                releaseConnection();
+            } else {
+                if (!conn.isClosed()) conn.close();
+            }
+        } catch (SQLException e) {
+            LoggerUtil.warn("Error closing connection: " + e.getMessage());
         }
     }
 
@@ -299,6 +341,12 @@ public class DatabaseEngine {
                     UNIQUE(user_id, subject_id, form, stream)
                 );
                 CREATE INDEX IF NOT EXISTS idx_teacher_subjects_user ON teacher_subjects(user_id);
+            """);
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT
+                );
             """);
         }
     }

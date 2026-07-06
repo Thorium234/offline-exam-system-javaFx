@@ -21,7 +21,7 @@ public abstract class DatabaseTestBase {
 
     @BeforeEach
     void setUp() {
-        cleanAllTables();
+        // Tables are cleaned by InMemoryDbExtension.afterEach
     }
 
     protected Connection getConnection() {

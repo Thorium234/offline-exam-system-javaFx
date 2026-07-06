@@ -10,7 +10,6 @@ public class SettingsRepositoryImpl implements ISettingsRepository {
 
     private static final Logger LOG = LoggerUtil.getLogger();
     private final DatabaseEngine db;
-    private static boolean tableEnsured = false;
 
     public SettingsRepositoryImpl() {
         this.db = DatabaseEngine.getInstance();
@@ -18,7 +17,6 @@ public class SettingsRepositoryImpl implements ISettingsRepository {
     }
 
     private void ensureTable() {
-        if (tableEnsured) return;
         try (Statement st = db.getConnection().createStatement()) {
             st.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)");
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('curriculum', 'SYSTEM_844')");
@@ -31,7 +29,6 @@ public class SettingsRepositoryImpl implements ISettingsRepository {
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('remark_high', 'Excellent performance. Keep it up!')");
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('remark_average', 'Good performance. Room for improvement.')");
             st.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('remark_low', 'Needs more effort and focus.')");
-            tableEnsured = true;
         } catch (SQLException e) {
             throw new RuntimeException("Failed to init settings", e);
         }
