@@ -1,7 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.service.ExamAnalysisService;
+import com.zaraki.exams.service.IExamAnalysisService;
+import com.zaraki.exams.service.ExamAnalysisServiceImpl;
 import com.zaraki.exams.util.UIUtils;
 import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.application.Platform;
@@ -36,7 +37,7 @@ public class TeacherDashboardForm {
     private final long userId;
     private final Runnable onLogout;
     private final StackPane root;
-    private final ExamAnalysisService analysisService = new ExamAnalysisService();
+    private final IExamAnalysisService analysisService = new ExamAnalysisServiceImpl();
 
     private long selectedExamId;
     private long selectedSubjectId;

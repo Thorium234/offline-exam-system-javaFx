@@ -1,16 +1,17 @@
 package com.zaraki.exams.config;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.repository.SettingsRepository;
+import com.zaraki.exams.repository.ISettingsRepository;
+import com.zaraki.exams.repository.SettingsRepositoryImpl;
 
 import java.sql.*;
 
 public class SettingsManager {
 
-    private final SettingsRepository repo;
+    private final ISettingsRepository repo;
 
     public SettingsManager() {
-        this.repo = new SettingsRepository();
+        this.repo = new SettingsRepositoryImpl();
     }
 
     public CurriculumSystem getCurriculum() {

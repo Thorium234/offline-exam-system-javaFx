@@ -1,8 +1,10 @@
 package com.zaraki.exams.util;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.repository.ExamRepository;
-import com.zaraki.exams.repository.StreamRepository;
+import com.zaraki.exams.repository.IExamRepository;
+import com.zaraki.exams.repository.IStreamRepository;
+import com.zaraki.exams.repository.ExamRepositoryImpl;
+import com.zaraki.exams.repository.StreamRepositoryImpl;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.scene.control.*;
@@ -17,12 +19,13 @@ import java.util.TreeSet;
 
 public class UIUtils {
 
-    private static final ExamRepository examRepo = new ExamRepository();
-    private static final StreamRepository streamRepo = new StreamRepository();
+    private static final IExamRepository examRepo = new ExamRepositoryImpl();
+    private static final IStreamRepository streamRepo = new StreamRepositoryImpl();
 
     private UIUtils() {}
 
     public static void showError(String msg) {
+        LoggerUtil.warn(msg);
         Platform.runLater(() -> {
             Alert a = new Alert(Alert.AlertType.ERROR, msg);
             a.showAndWait();
@@ -30,6 +33,7 @@ public class UIUtils {
     }
 
     public static void showInfo(String msg) {
+        LoggerUtil.info(msg);
         Platform.runLater(() -> {
             Alert a = new Alert(Alert.AlertType.INFORMATION, msg);
             a.showAndWait();

@@ -2,9 +2,12 @@ package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.reporting.ReportCardGenerator;
-import com.zaraki.exams.repository.StudentRepository;
-import com.zaraki.exams.repository.SubjectRepository;
-import com.zaraki.exams.service.ExcelService;
+import com.zaraki.exams.repository.IStudentRepository;
+import com.zaraki.exams.repository.ISubjectRepository;
+import com.zaraki.exams.repository.StudentRepositoryImpl;
+import com.zaraki.exams.repository.SubjectRepositoryImpl;
+import com.zaraki.exams.service.IExcelService;
+import com.zaraki.exams.service.ExcelServiceImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -27,9 +30,9 @@ import java.util.stream.Collectors;
 public class StudentForm {
 
     private final DatabaseEngine db;
-    private final StudentRepository studentRepo;
-    private final SubjectRepository subjectRepo;
-    private final ExcelService excelService;
+    private final IStudentRepository studentRepo;
+    private final ISubjectRepository subjectRepo;
+    private final IExcelService excelService;
     private final Stage stage;
 
     private TableView<StudentRow> table;
@@ -39,9 +42,9 @@ public class StudentForm {
     public StudentForm(DatabaseEngine db, Stage stage) {
         this.db = db;
         this.stage = stage;
-        this.studentRepo = new StudentRepository();
-        this.subjectRepo = new SubjectRepository();
-        this.excelService = new ExcelService();
+        this.studentRepo = new StudentRepositoryImpl();
+        this.subjectRepo = new SubjectRepositoryImpl();
+        this.excelService = new ExcelServiceImpl();
     }
 
     public VBox getView() {
@@ -212,14 +215,14 @@ public class StudentForm {
             if (file == null) return;
             if (file.length() > 10_485_760) { UIUtils.showError("File too large. Maximum size is 10 MB."); return; }
             spinner.setVisible(true);
-            Task<ExcelService.StudentImportResult> task = new Task<>() {
-                @Override protected ExcelService.StudentImportResult call() {
+            Task<IExcelService.StudentImportResult> task = new Task<>() {
+                @Override protected IExcelService.StudentImportResult call() {
                     return excelService.processStudentUpload(file.toPath());
                 }
             };
             task.setOnSucceeded(ev -> {
                 spinner.setVisible(false);
-                ExcelService.StudentImportResult r = task.getValue();
+                IExcelService.StudentImportResult r = task.getValue();
                 statusLabel.setText("Imported: " + r.inserted() + " new, " + r.updated() + " updated, " + r.errors() + " errors");
                 load();
             });
@@ -256,7 +259,7 @@ public class StudentForm {
             spinner.setVisible(true);
             Task<Void> task = new Task<>() {
                 @Override protected Void call() {
-                    new ExcelService().generateStudentListExcel(file.toPath(), "", "");
+                    new ExcelServiceImpl().generateStudentListExcel(file.toPath(), "", "");
                     return null;
                 }
             };

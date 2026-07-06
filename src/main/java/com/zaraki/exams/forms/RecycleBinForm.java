@@ -1,6 +1,7 @@
 package com.zaraki.exams.forms;
 
-import com.zaraki.exams.repository.StudentRepository;
+import com.zaraki.exams.repository.IStudentRepository;
+import com.zaraki.exams.repository.StudentRepositoryImpl;
 import com.zaraki.exams.util.UIUtils;
 import static com.zaraki.exams.forms.AppTheme.PRIMARY;
 import javafx.application.Platform;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
 
 public class RecycleBinForm {
 
-    private final StudentRepository studentRepo = new StudentRepository();
+    private final IStudentRepository studentRepo = new StudentRepositoryImpl();
     private final Runnable onBackToDashboard;
     private final StackPane root;
 

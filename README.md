@@ -108,4 +108,4 @@ src/main/java/com/zaraki/exams/
 
 ## License
 
-See [LICENCE.txt](LICENCE.txt).
+See [LICENSE.txt](LICENSE.txt).

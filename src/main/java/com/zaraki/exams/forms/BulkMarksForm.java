@@ -1,7 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.service.ExcelService;
+import com.zaraki.exams.service.IExcelService;
+import com.zaraki.exams.service.ExcelServiceImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -23,7 +24,7 @@ import java.util.TreeSet;
 public class BulkMarksForm {
 
     private final DatabaseEngine db;
-    private final ExcelService excelService;
+    private final IExcelService excelService;
     private final Stage stage;
     private final long loggedInUserId;
     private final boolean isTeacher;
@@ -39,7 +40,7 @@ public class BulkMarksForm {
     public BulkMarksForm(DatabaseEngine db, Stage stage, long loggedInUserId, String loggedInRole) {
         this.db = db;
         this.stage = stage;
-        this.excelService = new ExcelService();
+        this.excelService = new ExcelServiceImpl();
         this.loggedInUserId = loggedInUserId;
         this.isTeacher = "teacher".equals(loggedInRole);
     }
@@ -187,8 +188,8 @@ public class BulkMarksForm {
             spinner.setVisible(true);
             statusLabel.setText("Processing upload...");
 
-            Task<ExcelService.ImportResult> task = new Task<>() {
-                @Override protected ExcelService.ImportResult call() {
+            Task<IExcelService.ImportResult> task = new Task<>() {
+                @Override protected IExcelService.ImportResult call() {
                     if (isTeacher) {
                         long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
                         return excelService.processSubjectUpload(file.toPath(), examId, subjectId, form, stream);
@@ -198,7 +199,7 @@ public class BulkMarksForm {
             };
             task.setOnSucceeded(ev -> {
                 spinner.setVisible(false);
-                ExcelService.ImportResult result = task.getValue();
+                IExcelService.ImportResult result = task.getValue();
                 statusLabel.setText("Import complete: " + result.marksInserted() + " marks inserted.");
                 log("=== Import Results ===");
                 log("File: " + file.getName());
@@ -268,14 +269,14 @@ public class BulkMarksForm {
             spinner.setVisible(true);
             statusLabel.setText("Processing multi-sheet upload...");
 
-            Task<ExcelService.ImportResult> task = new Task<>() {
-                @Override protected ExcelService.ImportResult call() {
+            Task<IExcelService.ImportResult> task = new Task<>() {
+                @Override protected IExcelService.ImportResult call() {
                     return excelService.processTeacherMultiSheetUpload(file.toPath(), examId, form, stream);
                 }
             };
             task.setOnSucceeded(ev -> {
                 spinner.setVisible(false);
-                ExcelService.ImportResult result = task.getValue();
+                IExcelService.ImportResult result = task.getValue();
                 statusLabel.setText("Import complete: " + result.marksInserted() + " marks inserted.");
                 log("=== Multi-Sheet Import Results ===");
                 log("File: " + file.getName());

@@ -1,11 +1,16 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.repository.ExamRepository;
-import com.zaraki.exams.repository.StudentRepository;
-import com.zaraki.exams.repository.SubjectRepository;
-import com.zaraki.exams.repository.TeacherSubjectRepository;
-import com.zaraki.exams.service.ExamAnalysisService;
+import com.zaraki.exams.repository.IExamRepository;
+import com.zaraki.exams.repository.IStudentRepository;
+import com.zaraki.exams.repository.ISubjectRepository;
+import com.zaraki.exams.repository.ITeacherSubjectRepository;
+import com.zaraki.exams.repository.ExamRepositoryImpl;
+import com.zaraki.exams.repository.StudentRepositoryImpl;
+import com.zaraki.exams.repository.SubjectRepositoryImpl;
+import com.zaraki.exams.repository.TeacherSubjectRepositoryImpl;
+import com.zaraki.exams.service.IExamAnalysisService;
+import com.zaraki.exams.service.ExamAnalysisServiceImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -26,11 +31,11 @@ import java.util.*;
 public class MarksEntryForm {
 
     private final DatabaseEngine db;
-    private final ExamAnalysisService analysisService;
-    private final ExamRepository examRepo;
-    private final StudentRepository studentRepo;
-    private final SubjectRepository subjectRepo;
-    private final TeacherSubjectRepository teacherSubjectRepo;
+    private final IExamAnalysisService analysisService;
+    private final IExamRepository examRepo;
+    private final IStudentRepository studentRepo;
+    private final ISubjectRepository subjectRepo;
+    private final ITeacherSubjectRepository teacherSubjectRepo;
     private final long loggedInUserId;
     private final boolean isTeacher;
 
@@ -55,11 +60,11 @@ public class MarksEntryForm {
 
     public MarksEntryForm(DatabaseEngine db, long loggedInUserId, String loggedInRole) {
         this.db = db;
-        this.analysisService = new ExamAnalysisService();
-        this.examRepo = new ExamRepository();
-        this.studentRepo = new StudentRepository();
-        this.subjectRepo = new SubjectRepository();
-        this.teacherSubjectRepo = new TeacherSubjectRepository();
+        this.analysisService = new ExamAnalysisServiceImpl();
+        this.examRepo = new ExamRepositoryImpl();
+        this.studentRepo = new StudentRepositoryImpl();
+        this.subjectRepo = new SubjectRepositoryImpl();
+        this.teacherSubjectRepo = new TeacherSubjectRepositoryImpl();
         this.loggedInUserId = loggedInUserId;
         this.isTeacher = "teacher".equals(loggedInRole);
     }

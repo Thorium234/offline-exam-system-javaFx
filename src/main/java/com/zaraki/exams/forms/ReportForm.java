@@ -3,9 +3,13 @@ package com.zaraki.exams.forms;
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.reporting.ReportCardGenerator;
-import com.zaraki.exams.repository.ExamRepository;
-import com.zaraki.exams.repository.StudentRepository;
-import com.zaraki.exams.service.ExamAnalysisService;
+import com.zaraki.exams.repository.IExamRepository;
+import com.zaraki.exams.repository.ExamRepositoryImpl;
+import com.zaraki.exams.repository.IStudentRepository;
+import com.zaraki.exams.repository.StudentRepositoryImpl;
+import com.zaraki.exams.service.IExamAnalysisService;
+import com.zaraki.exams.service.ExamAnalysisServiceImpl;
+
 import com.zaraki.exams.util.UIUtils;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
@@ -33,8 +37,8 @@ public class ReportForm {
 
     private final DatabaseEngine db;
     private final ReportCardGenerator reportGenerator;
-    private final ExamRepository examRepo;
-    private final StudentRepository studentRepo;
+    private final IExamRepository examRepo;
+    private final IStudentRepository studentRepo;
     private final Stage stage;
 
     private final ComboBox<String> examBox = new ComboBox<>();
@@ -55,12 +59,17 @@ public class ReportForm {
     private VBox previewBox;
     private Label statusLabel;
 
+    @Deprecated
     public ReportForm(DatabaseEngine db, Stage stage) {
+        this(db, stage, new ExamRepositoryImpl(), new StudentRepositoryImpl());
+    }
+
+    public ReportForm(DatabaseEngine db, Stage stage, IExamRepository examRepo, IStudentRepository studentRepo) {
         this.db = db;
         this.stage = stage;
         this.reportGenerator = new ReportCardGenerator();
-        this.examRepo = new ExamRepository();
-        this.studentRepo = new StudentRepository();
+        this.examRepo = examRepo;
+        this.studentRepo = studentRepo;
     }
 
     public VBox getView() {
@@ -381,15 +390,15 @@ public class ReportForm {
         trendChart.setTitle("Performance Trend (All Exams)");
         trendChart.setPrefHeight(200); trendChart.setAnimated(false); trendChart.setLegendVisible(false);
 
-        ExamAnalysisService eas = new ExamAnalysisService();
-        List<ExamAnalysisService.StudentTrend> trendData = eas.computeStudentTrend(studentId);
+        IExamAnalysisService eas = new ExamAnalysisServiceImpl();
+        List<IExamAnalysisService.StudentTrend> trendData = eas.computeStudentTrend(studentId);
         if (trendData.size() >= 2) {
             XYChart.Series<Number, Number> series = new XYChart.Series<>();
             for (int i = 0; i < trendData.size(); i++)
                 series.getData().add(new XYChart.Data<>(i + 1, trendData.get(i).totalPoints()));
             trendChart.getData().add(series);
-            double mn = trendData.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).min().orElse(0);
-            double mx = trendData.stream().mapToDouble(ExamAnalysisService.StudentTrend::totalPoints).max().orElse(0);
+                double mn = trendData.stream().mapToDouble(IExamAnalysisService.StudentTrend::totalPoints).min().orElse(0);
+                double mx = trendData.stream().mapToDouble(IExamAnalysisService.StudentTrend::totalPoints).max().orElse(0);
             double p = Math.max((mx - mn) * 0.15, 2);
             ty.setAutoRanging(false);
             ty.setLowerBound(Math.max(0, mn - p));

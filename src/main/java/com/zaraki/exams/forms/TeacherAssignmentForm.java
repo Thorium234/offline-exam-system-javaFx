@@ -1,9 +1,13 @@
 package com.zaraki.exams.forms;
 
-import com.zaraki.exams.repository.SubjectRepository;
-import com.zaraki.exams.repository.TeacherSubjectRepository;
-import com.zaraki.exams.repository.StreamRepository;
-import com.zaraki.exams.repository.UserRepository;
+import com.zaraki.exams.repository.ISubjectRepository;
+import com.zaraki.exams.repository.ITeacherSubjectRepository;
+import com.zaraki.exams.repository.IStreamRepository;
+import com.zaraki.exams.repository.IUserRepository;
+import com.zaraki.exams.repository.SubjectRepositoryImpl;
+import com.zaraki.exams.repository.TeacherSubjectRepositoryImpl;
+import com.zaraki.exams.repository.StreamRepositoryImpl;
+import com.zaraki.exams.repository.UserRepositoryImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -18,10 +22,10 @@ import java.util.*;
 
 public class TeacherAssignmentForm {
 
-    private final TeacherSubjectRepository tsRepo = new TeacherSubjectRepository();
-    private final UserRepository userRepo = new UserRepository();
-    private final SubjectRepository subjectRepo = new SubjectRepository();
-    private final StreamRepository streamRepo = new StreamRepository();
+    private final ITeacherSubjectRepository tsRepo = new TeacherSubjectRepositoryImpl();
+    private final IUserRepository userRepo = new UserRepositoryImpl();
+    private final ISubjectRepository subjectRepo = new SubjectRepositoryImpl();
+    private final IStreamRepository streamRepo = new StreamRepositoryImpl();
     private final ComboBox<String> teacherBox = new ComboBox<>();
     private final TableView<AssignmentRow> assignTable = new TableView<>();
     private final ObservableList<AssignmentRow> assignData = FXCollections.observableArrayList();

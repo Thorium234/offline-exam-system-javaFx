@@ -654,13 +654,13 @@ public class ReportCardGenerator {
             doc.add(Chunk.NEWLINE);
 
             String filterCol = validateFilterColumn(groupBy.equals("stream") ? "stream" : "form");
-            com.zaraki.exams.service.ExamAnalysisService analysis = new com.zaraki.exams.service.ExamAnalysisService();
+            com.zaraki.exams.service.IExamAnalysisService analysis = new com.zaraki.exams.service.ExamAnalysisServiceImpl();
             var reportData = analysis.computeMeritReport(examId, filterCol, groupValue, formFilter);
 
             var subjects = reportData.subjects();
             var students = reportData.students();
 
-            List<Long> subjIds = subjects.stream().map(com.zaraki.exams.service.ExamAnalysisService.MeritSubject::id).toList();
+            List<Long> subjIds = subjects.stream().map(com.zaraki.exams.service.IExamAnalysisService.MeritSubject::id).toList();
             List<String> subjCodes = subjects.stream().map(s -> s.code() != null && !s.code().isBlank() ? s.code() : "S" + (subjects.indexOf(s) + 1)).toList();
 
             int colCount = 2 + subjIds.size() * 2 + 5;

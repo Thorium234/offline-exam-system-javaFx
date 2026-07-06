@@ -1,7 +1,8 @@
 package com.zaraki.exams.forms;
 
 import com.zaraki.exams.database.DatabaseEngine;
-import com.zaraki.exams.repository.ExamRepository;
+import com.zaraki.exams.repository.IExamRepository;
+import com.zaraki.exams.repository.ExamRepositoryImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -11,12 +12,12 @@ import javafx.scene.layout.*;
 
 public class ExamForm {
 
-    private final ExamRepository examRepo;
+    private final IExamRepository examRepo;
     private final TableView<ExamRow> table;
     private final ObservableList<ExamRow> data;
 
     public ExamForm(DatabaseEngine db) {
-        this.examRepo = new ExamRepository();
+        this.examRepo = new ExamRepositoryImpl();
         this.table = new TableView<>();
         this.data = FXCollections.observableArrayList();
     }

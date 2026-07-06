@@ -43,6 +43,12 @@
       <plugin>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+        <configuration>
+          <systemPropertyVariables>
+            <exam.db.path>target/test_exam_analysis.db</exam.db.path>
+          </systemPropertyVariables>
+          <argLine>-Djava.awt.headless=true</argLine>
+        </configuration>
       </plugin>
     </plugins>
   </build>

@@ -2,11 +2,15 @@ package com.zaraki.exams;
 
 import com.zaraki.exams.auth.PasswordUtils;
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
 import java.util.Random;
+import java.util.logging.Logger;
 
 public class SeedData {
+
+    private static final Logger LOG = LoggerUtil.getLogger();
 
     private final DatabaseEngine db;
 
@@ -49,6 +53,7 @@ public class SeedData {
     }
 
     public int seedAll() throws SQLException {
+        LOG.info("Seeding all data...");
         int total = 0;
         seedSubjects();
         seedDefaultGrades();
@@ -56,11 +61,16 @@ public class SeedData {
             total += seedStudents(form, "A");
             total += seedStudents(form, "B");
         }
+        LOG.info("Seeded " + total + " students");
         return total;
     }
 
     public void seedDefaultGrades() throws SQLException {
-        if (hasDefaultGrades()) return;
+        if (hasDefaultGrades()) {
+            LOG.fine("Default grades already exist, skipping");
+            return;
+        }
+        LOG.info("Seeding default grading scales");
         String sql = "INSERT INTO grading_scales (subject_id, minimum_mark, maximum_mark, grade, points, remarks) VALUES (NULL,?,?,?,?,?)";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -98,6 +108,7 @@ public class SeedData {
     }
 
     public void seedSubjects() throws SQLException {
+        LOG.info("Seeding subjects");
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                  "INSERT OR IGNORE INTO subjects (subject_code, subject_name, department, grouping) VALUES (?,?,?,?)")) {
@@ -112,7 +123,11 @@ public class SeedData {
     }
 
     public void seedTeachers() throws SQLException {
-        if (hasTeachers()) return;
+        if (hasTeachers()) {
+            LOG.fine("Teachers already exist, skipping");
+            return;
+        }
+        LOG.info("Seeding teachers");
         String sql = "INSERT OR IGNORE INTO users (username, password_hash, salt, full_name, role) VALUES (?,?,?,?,?)";
         String[][] teachers = {
             {"teacher1", "Alice Kamau"}, {"teacher2", "Bob Otieno"}, {"teacher3", "Carol Wanjiku"},
@@ -144,6 +159,7 @@ public class SeedData {
     }
 
     public void hardReset() throws SQLException {
+        LOG.warning("Performing hard reset of all data");
         try (Connection conn = db.getConnection();
              Statement st = conn.createStatement()) {
             conn.setAutoCommit(false);
@@ -168,6 +184,7 @@ public class SeedData {
     }
 
     public int seedStudents(int form, String stream) throws SQLException {
+        LOG.info("Seeding students for Form " + form + " " + stream);
         String sql = "INSERT OR IGNORE INTO students (admission_number, full_name, form, stream) VALUES (?,?,?,?)";
         int count = 0;
         try (Connection conn = db.getConnection();
@@ -189,6 +206,7 @@ public class SeedData {
     }
 
     public int seedMarks(long examId) throws SQLException {
+        LOG.info("Seeding marks for exam " + examId);
         String subjSql = "SELECT id FROM subjects";
         String studentSql = "SELECT id FROM students";
         String insertSql = "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score) VALUES (?,?,?,?)";
