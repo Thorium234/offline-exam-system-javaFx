@@ -13,6 +13,7 @@ import com.zaraki.exams.service.IExamAnalysisService;
 import com.zaraki.exams.service.ExamAnalysisServiceImpl;
 import com.zaraki.exams.util.UIUtils;
 import javafx.animation.PauseTransition;
+import javafx.application.Platform;
 import javafx.beans.property.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -217,7 +218,6 @@ public class MarksEntryForm {
         studentTable.setFixedCellSize(42);
         studentTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         studentTable.getStyleClass().add("marks-table");
-        studentTable.setPrefHeight(420);
         VBox.setVgrow(studentTable, Priority.ALWAYS);
         setupTableColumns();
 
@@ -245,6 +245,7 @@ public class MarksEntryForm {
         studentCard.getChildren().addAll(studentHeader, studentEntryArea);
         VBox.setVgrow(studentEntryArea, Priority.ALWAYS);
         studentEntryArea.getChildren().addAll(statsBar, studentTable, bottomBar);
+        studentEntryArea.setMinHeight(320);
 
         // ===== LOADING OVERLAY =====
         loadingOverlay = new VBox(10);
@@ -977,6 +978,8 @@ public class MarksEntryForm {
 
         filteredData = new FilteredList<>(masterData, p -> true);
         studentTable.setItems(filteredData);
+        // Force layout pass after visibility transition
+        Platform.runLater(() -> studentTable.requestLayout());
         recalcStats();
         classInfoLabel.setText("📖 " + selectedSubjectName + "  |  👥 " + masterData.size() + " students");
         showLoading(false);
