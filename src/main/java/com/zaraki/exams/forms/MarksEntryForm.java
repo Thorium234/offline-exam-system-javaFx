@@ -264,7 +264,17 @@ public class MarksEntryForm {
         VBox.setVgrow(contentStack, Priority.ALWAYS);
         VBox contentBox = new VBox(12, selectorRow, subjectCardsArea, studentCard);
         VBox.setVgrow(studentCard, Priority.ALWAYS);
-        contentStack.getChildren().addAll(contentBox, loadingOverlay);
+
+        // Wrap content in a ScrollPane so bottom buttons are reachable on small screens
+        ScrollPane scrollPane = new ScrollPane(contentBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setFitToHeight(false);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-border: none;");
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+
+        contentStack.getChildren().addAll(scrollPane, loadingOverlay);
 
         saveAllBtn.setOnAction(e -> saveAllMarks());
         studentTable.setOnKeyPressed(e -> {
