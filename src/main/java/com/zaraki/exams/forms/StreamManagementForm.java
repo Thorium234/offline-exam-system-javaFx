@@ -14,8 +14,7 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 
 import java.sql.*;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 public class StreamManagementForm {
 
@@ -86,7 +85,7 @@ public class StreamManagementForm {
         fields.getChildren().addAll(addRow, table, actionRow);
 
         view.getChildren().addAll(header, info, fields);
-        loadData();
+        refreshAll();
 
         addBtn.setOnAction(e -> {
             if (formBox.getValue() == null) { UIUtils.showError("Select a form."); return; }
@@ -94,7 +93,7 @@ public class StreamManagementForm {
             if (stream == null || stream.isBlank()) { UIUtils.showError("Enter a stream name."); return; }
             try {
                 streamRepo.insert(formBox.getValue(), stream.trim());
-                loadData();
+                refreshAll();
                 statusLabel.setText("Added Form " + formBox.getValue() + " " + stream.trim());
                 formBox.setValue(null);
                 streamBox.setValue(null);
@@ -112,41 +111,86 @@ public class StreamManagementForm {
             try {
                 streamRepo.updateStudentsStreamToGeneral(sel.form, sel.streamName);
                 streamRepo.delete(sel.form, sel.streamName);
-                loadData();
+                refreshAll();
                 statusLabel.setText("Deleted " + sel.form + " " + sel.streamName);
             } catch (Exception ex) { UIUtils.showError("Error: " + ex.getMessage()); }
         });
 
-        refreshBtn.setOnAction(e -> loadData());
+        refreshBtn.setOnAction(e -> refreshAll());
 
         return view;
     }
 
     private void loadStreamNames() {
-        Set<String> names = streamRepo.findAllNames();
+        // Query streams table first, fallback to students
+        Set<String> names = new TreeSet<>();
+        try (Connection conn = DatabaseEngine.getInstance().getConnection();
+             Statement st = conn.createStatement()) {
+            try (ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM streams ORDER BY stream")) {
+                while (rs.next()) names.add(rs.getString("stream"));
+            }
+            if (names.isEmpty()) {
+                try (ResultSet rs = st.executeQuery("SELECT DISTINCT stream FROM students WHERE deallocated = 0 ORDER BY stream")) {
+                    while (rs.next()) names.add(rs.getString("stream"));
+                }
+            }
+        } catch (Exception ignored) {}
+        if (names.isEmpty()) {
+            names.add("A"); names.add("B"); names.add("C"); names.add("D"); names.add("E");
+        }
         streamBox.setItems(FXCollections.observableArrayList(names));
     }
 
     private void loadStreamForms() {
-        Set<Integer> forms = streamRepo.findAllForms();
-        if (forms.isEmpty()) {
-            // Fallback: query students table
-            try (Connection conn = DatabaseEngine.getInstance().getConnection();
-                 Statement st = conn.createStatement();
-                 ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE deallocated = 0 ORDER BY form")) {
+        // Query streams table first, fallback to students, then fallback to defaults
+        Set<Integer> forms = new TreeSet<>();
+        try (Connection conn = DatabaseEngine.getInstance().getConnection();
+             Statement st = conn.createStatement()) {
+            try (ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
                 while (rs.next()) forms.add(rs.getInt("form"));
-            } catch (Exception ignored) {}
-        }
+            }
+            if (forms.isEmpty()) {
+                try (ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE deallocated = 0 ORDER BY form")) {
+                    while (rs.next()) forms.add(rs.getInt("form"));
+                }
+            }
+        } catch (Exception ignored) {}
         if (forms.isEmpty()) {
             for (int f = 1; f <= 4; f++) forms.add(f);
         }
-        formBox.setItems(FXCollections.observableArrayList(forms));
+        ComboBox<Integer> box = formBox;
+        Integer current = box.getValue();
+        box.setItems(FXCollections.observableArrayList(forms));
+        if (current != null && forms.contains(current)) box.setValue(current);
+    }
+
+    private void refreshAll() {
+        loadData();
+        loadStreamNames();
+        loadStreamForms();
     }
 
     private void loadData() {
         data.clear();
         try {
+            // Query streams table with student counts via repository
             var streams = streamRepo.findAllWithStudentCount();
+            if (streams.isEmpty()) {
+                // Fallback: query students directly as streams table may be empty
+                streams = new java.util.ArrayList<>();
+                try (Connection conn = DatabaseEngine.getInstance().getConnection();
+                     Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery(
+                         "SELECT form, stream, COUNT(*) AS cnt FROM students WHERE deallocated = 0 GROUP BY form, stream ORDER BY form, stream")) {
+                    while (rs.next()) {
+                        java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                        row.put("form", rs.getInt("form"));
+                        row.put("stream", rs.getString("stream"));
+                        row.put("cnt", rs.getInt("cnt"));
+                        streams.add(row);
+                    }
+                } catch (Exception ignored) {}
+            }
             for (var s : streams)
                 data.add(new StreamRow((int) s.get("form"), (String) s.get("stream"), (int) s.get("cnt")));
             if (data.isEmpty()) {
