@@ -4,23 +4,23 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
 public class AppTheme {
-    public static final String PRIMARY = "#1a237e";
-    public static final String RED = "#c62828";
-    public static final String GREEN = "#2e7d32";
-    public static final String WHITE_BG = "#f5f5f5";
-    public static final String BLUE = "#1565c0";
-    public static final String ORANGE = "#e65100";
-    public static final String DARK_BLUE = "#1a237e";
+    public static final String PRIMARY = "#1E40AF";
+    public static final String RED = "#DC2626";
+    public static final String GREEN = "#166534";
+    public static final String WHITE_BG = "#F8FAFC";
+    public static final String BLUE = "#2563EB";
+    public static final String ORANGE = "#EA580C";
+    public static final String DARK_BLUE = "#1E40AF";
 
     // Dark mode colors
-    public static final String DARK_BG = "#1a1d23";
-    public static final String DARK_SURFACE = "#1e2028";
-    public static final String DARK_CARD = "#242730";
-    public static final String DARK_BORDER = "#2d2f3a";
-    public static final String DARK_TEXT = "#e0e0e0";
-    public static final String DARK_TEXT_SECONDARY = "#9e9e9e";
-    public static final String DARK_ACCENT = "#90caf9";
-    public static final String DARK_INPUT = "#2d2f3a";
+    public static final String DARK_BG = "#0F172A";
+    public static final String DARK_SURFACE = "#1E293B";
+    public static final String DARK_CARD = "#1E293B";
+    public static final String DARK_BORDER = "#334155";
+    public static final String DARK_TEXT = "#F1F5F9";
+    public static final String DARK_TEXT_SECONDARY = "#94A3B8";
+    public static final String DARK_ACCENT = "#93C5FD";
+    public static final String DARK_INPUT = "#1E293B";
 
     public static final String SIDEBAR_ICON_STUDENTS = "\uD83D\uDC65";
     public static final String SIDEBAR_ICON_SUBJECTS = "\uD83D\uDCDA";

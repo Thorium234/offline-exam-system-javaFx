@@ -50,9 +50,9 @@ public class RecycleBinForm {
 
         HBox actions = new HBox(10);
         Button restoreBtn = new Button("Restore Selected");
-        restoreBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
+        restoreBtn.getStyleClass().addAll("button", "button-success");
         Button deleteBtn = new Button("Permanently Delete Selected");
-        deleteBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
+        deleteBtn.getStyleClass().addAll("button", "button-danger");
         Button selectAllBtn = new Button("Select All");
         Button deselectBtn = new Button("Deselect All");
         Label statusLabel = UIUtils.makeStatusLabel();

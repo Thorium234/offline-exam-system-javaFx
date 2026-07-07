@@ -32,7 +32,7 @@ public class DashboardDemoDataPanel {
         Button seedSubjectsBtn = new Button("\uD83D\uDCDA Generate Subjects");
         Button seedTeachersBtn = new Button("\uD83D\uDC68\u200D\uD83C\uDFEB Generate Teachers");
         Button resetBtn = new Button("\uD83D\uDDD1\uFE0F  Delete Entire Demo Database");
-        resetBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
+        resetBtn.getStyleClass().addAll("button", "button-danger");
 
         spinner = new ProgressIndicator();
         spinner.setVisible(false);

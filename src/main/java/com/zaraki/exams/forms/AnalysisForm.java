@@ -59,7 +59,7 @@ public class AnalysisForm {
 
         Button autoGradeBtn = new Button("Auto-Grade All");
         Button rankBtn = new Button("Compute Rankings");
-        rankBtn.setStyle("-fx-background-color: " + AppTheme.PRIMARY + "; -fx-text-fill: white; -fx-font-weight: bold;");
+        rankBtn.getStyleClass().addAll("button", "button-primary");
         spinner.setVisible(false);
         spinner.setPrefSize(24, 24);
 

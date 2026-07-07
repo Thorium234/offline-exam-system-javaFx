@@ -73,13 +73,13 @@ public class PublishTeacherPanel {
         Button templateBtn = new Button("Download Template");
         templateBtn.setOnAction(e -> downloadTemplate());
         Button uploadExcelBtn = new Button("Upload Excel");
-        uploadExcelBtn.setStyle("-fx-background-color: #1565c0; -fx-text-fill: white;");
+        uploadExcelBtn.getStyleClass().addAll("button", "button-primary");
         uploadExcelBtn.setOnAction(e -> uploadExcel());
         excelRow.getChildren().addAll(templateBtn, uploadExcelBtn, new Label("(Excel: column A = Admission, B = Score)"));
 
         HBox saveRow = new HBox(10);
         Button saveBtn = new Button("Save Marks");
-        saveBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
+        saveBtn.getStyleClass().addAll("button", "button-success");
         saveBtn.setOnAction(e -> saveUploadedMarks());
         Button refreshBtn = new Button("Refresh");
         refreshBtn.setOnAction(e -> scoreTable.loadStudents(currentExamId, currentSubjectId, currentOutOf));

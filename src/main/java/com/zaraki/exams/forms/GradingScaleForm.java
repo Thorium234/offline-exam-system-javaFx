@@ -64,7 +64,7 @@ public class GradingScaleForm {
         HBox btnRow = new HBox(10);
         Button addBtn = new Button("Add Scale");
         Button autoBtn = new Button("Auto-Generate " + curr.getDisplayName() + " Scales");
-        autoBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white;");
+        autoBtn.getStyleClass().addAll("button", "button-success");
         btnRow.getChildren().addAll(addBtn, autoBtn);
 
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);

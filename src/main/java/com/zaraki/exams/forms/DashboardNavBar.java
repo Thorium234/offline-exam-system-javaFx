@@ -37,7 +37,7 @@ public class DashboardNavBar {
         ));
         CurriculumSystem current = settings.getCurriculum();
         curriculumSwitcher.setValue(current.getDisplayName());
-        curriculumSwitcher.setStyle("-fx-background-color: #f0f0f0; -fx-text-fill: #333; -fx-font-size: 12; -fx-background-radius: 6;");
+        curriculumSwitcher.getStyleClass().addAll("button", "button-secondary");
         curriculumSwitcher.setOnAction(e -> {
             String val = curriculumSwitcher.getValue();
             CurriculumSystem cs = val.equals(CurriculumSystem.CBC.getDisplayName())

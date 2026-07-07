@@ -71,7 +71,7 @@ public class StreamManagementForm {
 
         HBox actionRow = new HBox(10);
         deleteBtn = new Button("Delete Selected");
-        deleteBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
+        deleteBtn.getStyleClass().addAll("button", "button-danger");
         deleteBtn.setDisable(true);
         Button refreshBtn = new Button("Refresh");
         statusLabel = UIUtils.makeStatusLabel();

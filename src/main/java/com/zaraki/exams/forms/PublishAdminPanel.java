@@ -122,7 +122,7 @@ public class PublishAdminPanel {
 
         HBox actionRow = new HBox(10);
         Button releaseBtn = new Button("Release Exam (Admin Only)");
-        releaseBtn.setStyle("-fx-background-color: #e65100; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14;");
+        releaseBtn.getStyleClass().addAll("button", "button-danger", "button-lg");
         releaseBtn.setPrefWidth(300);
         releaseBtn.setOnAction(e -> releaseExam());
 

@@ -65,7 +65,7 @@ public class TeacherAssignmentForm {
         cAction.setPrefWidth(100);
         cAction.setCellFactory(col -> new TableCell<>() {
             private final Button delBtn = new Button("Remove");
-            { delBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-size: 11;"); }
+            { delBtn.getStyleClass().addAll("button", "button-danger", "btn-sm"); }
             @Override protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || getTableRow() == null || getTableRow().getItem() == null) { setGraphic(null); return; }
@@ -92,7 +92,7 @@ public class TeacherAssignmentForm {
         addStreamBox.setEditable(true);
         loadStreams();
         Button addBtn = new Button("Add");
-        addBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
+        addBtn.getStyleClass().addAll("button", "button-success");
         addBtn.setOnAction(e -> addAssignment());
         addRow.getChildren().addAll(addSubjectBox, addFormBox, addStreamBox, addBtn);
 

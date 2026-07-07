@@ -132,11 +132,11 @@ public class SchoolSettingsForm {
 
         // ── Save ──
         Button saveBtn = new Button("Save Settings");
-        saveBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;");
+        saveBtn.getStyleClass().addAll("button", "button-primary");
         saveBtn.setPrefWidth(200);
 
         Button backupBtn = new Button("Backup Database");
-        backupBtn.setStyle("-fx-background-color: #e65100; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;");
+        backupBtn.getStyleClass().addAll("button", "button-danger");
         backupBtn.setPrefWidth(200);
 
         statusLabel = UIUtils.makeStatusLabel();

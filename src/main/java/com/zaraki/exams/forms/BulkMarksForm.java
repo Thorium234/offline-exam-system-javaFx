@@ -89,19 +89,19 @@ public class BulkMarksForm {
         VBox section2 = sectionBox("2. Generate or Upload");
         HBox btnRow = new HBox(10);
         Button genBtn = new Button("Generate Template");
-        genBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white; -fx-font-weight: bold;");
+        genBtn.getStyleClass().addAll("button", "button-primary");
         Button uploadBtn = new Button("Upload Filled Sheet");
-        uploadBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
+        uploadBtn.getStyleClass().addAll("button", "button-success");
         spinner = new ProgressIndicator();
         spinner.setVisible(false);
         spinner.setPrefSize(24, 24);
 
         Button generateAllBtn = new Button("Generate All Templates");
-        generateAllBtn.setStyle("-fx-background-color: #e65100; -fx-text-fill: white; -fx-font-weight: bold;");
+        generateAllBtn.getStyleClass().addAll("button", "button-danger");
         generateAllBtn.setVisible(false);
 
         Button uploadAllBtn = new Button("Upload All Sheets");
-        uploadAllBtn.setStyle("-fx-background-color: #00695c; -fx-text-fill: white; -fx-font-weight: bold;");
+        uploadAllBtn.getStyleClass().addAll("button", "button-success");
         uploadAllBtn.setVisible(false);
 
         btnRow.getChildren().addAll(genBtn, uploadBtn, spinner);

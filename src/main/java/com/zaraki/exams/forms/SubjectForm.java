@@ -48,7 +48,7 @@ public class SubjectForm {
         cDel.setPrefWidth(60);
         cDel.setCellFactory(col -> new TableCell<>() {
             private final Button delBtn = new Button("Delete");
-            { delBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-size: 10;"); }
+            { delBtn.getStyleClass().addAll("button", "button-danger", "btn-sm"); }
             @Override protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || getTableRow() == null || getTableRow().getItem() == null) {

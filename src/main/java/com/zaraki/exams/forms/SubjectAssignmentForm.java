@@ -75,7 +75,7 @@ public class SubjectAssignmentForm {
         subjectList.setStyle("-fx-background-color: #f5f5f5; -fx-background-radius: 8;");
 
         saveBtn = new Button("Save Assignments");
-        saveBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
+        saveBtn.getStyleClass().addAll("button", "button-success");
         saveBtn.setDisable(true);
 
         statusLabel = new Label();

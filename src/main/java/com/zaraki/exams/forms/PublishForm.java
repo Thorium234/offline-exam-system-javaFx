@@ -58,7 +58,7 @@ public class PublishForm {
         HBox examRow = new HBox(10);
         examRow.getChildren().addAll(new Label("Exam:"), examBox);
         Button loadBtn = new Button("Load");
-        loadBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white;");
+        loadBtn.getStyleClass().addAll("button", "button-primary");
         examRow.getChildren().add(loadBtn);
 
         mainArea.setVisible(false);

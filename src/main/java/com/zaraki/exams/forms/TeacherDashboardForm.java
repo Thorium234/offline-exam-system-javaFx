@@ -79,7 +79,7 @@ public class TeacherDashboardForm {
         spinner.setPrefSize(24, 24);
 
         Button logoutBtn = new Button("Logout");
-        logoutBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
+        logoutBtn.getStyleClass().addAll("button", "button-danger");
         logoutBtn.setOnAction(e -> { if (onLogout != null) onLogout.run(); });
 
         Task<List<ClassInfo>> loadTask = new Task<>() {
@@ -189,7 +189,7 @@ public class TeacherDashboardForm {
         HBox actions = new HBox(10);
         Button loadBtn = new Button("Load Students");
         Button saveBtn = new Button("Save Marks");
-        saveBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
+        saveBtn.getStyleClass().addAll("button", "button-success");
         Label statusLabel = new Label();
         statusLabel.setFont(Font.font("System", 12));
         statusLabel.setTextFill(Color.gray(0.5));

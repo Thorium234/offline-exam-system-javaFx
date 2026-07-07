@@ -411,7 +411,7 @@ public class StudentForm {
                         content.getChildren().add(cb);
                     }
                     Button saveBtn = new Button("Save");
-                    saveBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white;");
+                    saveBtn.getStyleClass().addAll("button", "button-success");
                     saveBtn.setOnAction(e -> saveSubjects(row.id, subjBoxes, dialog));
                     content.getChildren().add(saveBtn);
                 });

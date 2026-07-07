@@ -113,7 +113,7 @@ public class StudentBrowserForm {
 
         HBox actions = new HBox(10);
         Button deallocateBtn = new Button("Deallocate Selected");
-        deallocateBtn.setStyle("-fx-background-color: #c62828; -fx-text-fill: white; -fx-font-weight: bold;");
+        deallocateBtn.getStyleClass().addAll("button", "button-danger");
         Button selectAllBtn = new Button("Select All");
         Button deselectBtn = new Button("Deselect All");
         Label statusLabel = new Label();
