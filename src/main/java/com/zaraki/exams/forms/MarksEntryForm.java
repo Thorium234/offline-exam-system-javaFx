@@ -59,6 +59,7 @@ public class MarksEntryForm {
 
     // Summary stats labels
     private Label statAvgValue, statHighestValue, statLowestValue, statCountValue;
+    private Label subLabel;
 
     private long selectedExamId;
     private long selectedSubjectId;
@@ -159,20 +160,24 @@ public class MarksEntryForm {
         studentEntryArea.setVisible(false);
         studentEntryArea.getStyleClass().add("student-entry");
 
-        // --- Student header bar ---
+        // --- Student header bar (gradient banner) ---
         HBox studentHeader = new HBox(16);
         studentHeader.setAlignment(Pos.CENTER_LEFT);
+        studentHeader.getStyleClass().add("subject-banner");
         selectedSubjectLabel = new Label();
-        selectedSubjectLabel.getStyleClass().add("subject-title");
+        selectedSubjectLabel.getStyleClass().add("subject-banner-title");
 
         Button backBtn = new Button("← Back to Subjects");
-        backBtn.getStyleClass().addAll("button", "button-link");
+        backBtn.getStyleClass().addAll("button");
+        backBtn.setStyle("-fx-background-color: rgba(255,255,255,0.15); -fx-text-fill: white; -fx-background-radius: 6; -fx-border-color: rgba(255,255,255,0.25); -fx-border-radius: 6;");
         backBtn.setOnAction(e -> showSubjects());
 
-        HBox headerLeft = new HBox(12);
+        HBox headerLeft = new HBox(16);
         headerLeft.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(headerLeft, Priority.ALWAYS);
-        headerLeft.getChildren().addAll(selectedSubjectLabel, backBtn);
+        subLabel = new Label();
+        subLabel.getStyleClass().add("subject-banner-sub");
+        headerLeft.getChildren().addAll(selectedSubjectLabel, subLabel);
 
         // Search field
         searchField = new TextField();
@@ -190,7 +195,7 @@ public class MarksEntryForm {
             }
         });
 
-        studentHeader.getChildren().addAll(headerLeft, searchField);
+        studentHeader.getChildren().addAll(headerLeft, searchField, backBtn);
 
         // --- Summary Stats Bar ---
         HBox statsBar = new HBox(0);
@@ -234,7 +239,9 @@ public class MarksEntryForm {
 
         bottomBar.getChildren().addAll(saveAllBtn, refreshBtn, classInfoLabel);
 
-        studentEntryArea.getChildren().addAll(studentHeader, statsBar, studentTable, bottomBar);
+        VBox studentCard = new VBox(0);
+        studentCard.getChildren().addAll(studentHeader, studentEntryArea);
+        studentEntryArea.getChildren().addAll(statsBar, studentTable, bottomBar);
 
         // ===== LOADING OVERLAY =====
         loadingOverlay = new VBox(10);
@@ -251,7 +258,7 @@ public class MarksEntryForm {
         StackPane contentStack = new StackPane();
         VBox.setVgrow(contentStack, Priority.ALWAYS);
         contentStack.getChildren().addAll(
-            new VBox(15, selectorRow, subjectCardsArea, studentEntryArea),
+            new VBox(15, selectorRow, subjectCardsArea, studentCard),
             loadingOverlay
         );
 
@@ -305,6 +312,7 @@ public class MarksEntryForm {
         TableColumn<StudentMarkRow, String> colGrade = new TableColumn<>("Grade");
         colGrade.setCellValueFactory(new PropertyValueFactory<>("grade"));
         colGrade.setPrefWidth(65);
+        colGrade.setCellFactory(col -> new GradeCell());
         colGrade.getStyleClass().add("col-grade");
 
         TableColumn<StudentMarkRow, Integer> colPoints = new TableColumn<>("Pts");
@@ -433,6 +441,34 @@ public class MarksEntryForm {
         String[] parts = result.split("\\|");
         row.grade = parts.length > 0 ? parts[0] : "";
         row.points = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+    }
+
+    // ─────────────────────────────────────────────
+    //  GRADE CELL (color-coded A=green through E=red)
+    // ─────────────────────────────────────────────
+
+    private static class GradeCell extends TableCell<StudentMarkRow, String> {
+        private final Label lbl = new Label();
+        { lbl.setAlignment(Pos.CENTER); lbl.setPrefWidth(60); }
+
+        @Override
+        protected void updateItem(String item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                setGraphic(null);
+            } else {
+                String grade = getTableRow().getItem().grade;
+                lbl.setText(grade != null ? grade : "");
+                lbl.getStyleClass().removeAll(
+                    "grade-A", "grade-A-", "grade-B", "grade-B-",
+                    "grade-C", "grade-C-", "grade-D", "grade-D-", "grade-E");
+                if (grade != null && !grade.isEmpty()) {
+                    String cssClass = "grade-" + grade.replace("+", "").replace(" ", "");
+                    lbl.getStyleClass().add(cssClass);
+                }
+                setGraphic(lbl);
+            }
+        }
     }
 
     // ─────────────────────────────────────────────
@@ -685,11 +721,9 @@ public class MarksEntryForm {
         tile.setPrefWidth(140);
         tile.setPadding(new Insets(8, 12, 8, 12));
         tile.getStyleClass().add("stat-tile");
+        valueLabel.getStyleClass().add("stat-tile-value");
         Label lbl = new Label(label);
-        lbl.setFont(Font.font("System", 10));
-        lbl.setTextFill(Color.gray(0.55));
-        valueLabel.setFont(Font.font("System", FontWeight.BOLD, 18));
-        valueLabel.setTextFill(Color.web("#1a237e"));
+        lbl.getStyleClass().add("stat-tile-label");
         tile.getChildren().addAll(valueLabel, lbl);
         return tile;
     }
@@ -888,6 +922,7 @@ public class MarksEntryForm {
 
         int form = formBox.getValue();
         String stream = streamBox.getValue();
+        subLabel.setText("Form " + form + " — " + stream + "  ·  " + selectedOutOf + " marks max");
 
         double classAvg = 0;
         try (Connection conn = db.getConnection();
