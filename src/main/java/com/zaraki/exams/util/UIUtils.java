@@ -1,6 +1,5 @@
 package com.zaraki.exams.util;
 
-import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.repository.IExamRepository;
 import com.zaraki.exams.repository.IStreamRepository;
 import com.zaraki.exams.repository.ExamRepositoryImpl;

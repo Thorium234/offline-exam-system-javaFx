@@ -69,8 +69,10 @@ public class MarksEntryForm {
         this.isTeacher = "teacher".equals(loggedInRole);
     }
 
+    private VBox viewContainer;
+
     public VBox getView() {
-        VBox view = new VBox(15);
+        viewContainer = new VBox(15);
 
         Label header = UIUtils.makeHeader("Marks Entry");
 
@@ -125,7 +127,7 @@ public class MarksEntryForm {
         studentTable = new TableView<>();
         studentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         studentTable.setEditable(true);
-        studentTable.setPrefHeight(350);
+        VBox.setVgrow(studentTable, Priority.ALWAYS);
 
         TableColumn<StudentMarkRow, Integer> colPos = new TableColumn<>("#");
         colPos.setCellValueFactory(new PropertyValueFactory<>("pos"));
@@ -171,21 +173,22 @@ public class MarksEntryForm {
 
         TableColumn<StudentMarkRow, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
-        colStatus.setPrefWidth(80);
+        colStatus.setPrefWidth(70);
         colStatus.setCellFactory(col -> new TableCell<>() {
-            private final ComboBox<String> combo = new ComboBox<>(
+            private final ChoiceBox<String> choice = new ChoiceBox<>(
                 FXCollections.observableArrayList("P", "A", "D"));
-            { combo.setOnAction(e -> {
+            { choice.setPrefWidth(65); choice.setOnAction(e -> {
                 StudentMarkRow row = getTableRow().getItem();
-                if (row != null) { row.status = combo.getValue(); row.dirty = true; }
+                if (row != null) { row.status = choice.getValue(); row.dirty = true; }
             }); }
             @Override protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || getTableRow() == null || getTableRow().getItem() == null) {
                     setGraphic(null);
                 } else {
-                    combo.setValue(getTableRow().getItem().status != null ? getTableRow().getItem().status : "P");
-                    setGraphic(combo);
+                    String val = getTableRow().getItem().status;
+                    choice.setValue(val != null ? val : "P");
+                    setGraphic(choice);
                 }
             }
         });
@@ -218,11 +221,11 @@ public class MarksEntryForm {
 
         if (isTeacher) {
             classRow.getChildren().add(teacherLoadBtn);
-            view.getChildren().addAll(header, info, examRow, teacherSubjectRow, classRow, studentEntryArea);
+            viewContainer.getChildren().addAll(header, info, examRow, teacherSubjectRow, classRow, studentEntryArea);
             setupTeacherActions();
         } else {
             classRow.getChildren().add(loadBtn);
-            view.getChildren().addAll(header, info, examRow, classRow, subjectCardsArea, studentEntryArea);
+            viewContainer.getChildren().addAll(header, info, examRow, classRow, subjectCardsArea, studentEntryArea);
             loadBtn.setOnAction(e -> loadSubjects());
         }
 
@@ -231,7 +234,7 @@ public class MarksEntryForm {
             if (selectedSubjectId > 0) loadStudents(selectedSubjectId, selectedOutOf);
         });
 
-        return view;
+        return viewContainer;
     }
 
     private void setupTeacherActions() {

@@ -53,3 +53,9 @@ dependency-reduced-pom.xml
 # Generated school assets
 school_logo.*
 school_stamp.*
+
+# Excel lock files
+.*.~lock.*
+*.~lock.*
+*.xlsx
+*.xls
