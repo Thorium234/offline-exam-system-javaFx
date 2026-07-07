@@ -63,7 +63,7 @@ public class MarksEntryForm {
 
     private long selectedExamId;
     private long selectedSubjectId;
-    private int selectedOutOf;
+    private final SimpleIntegerProperty selectedOutOf = new SimpleIntegerProperty(100);
     private String selectedSubjectName;
 
     private HBox teacherSubjectRow;
@@ -214,8 +214,10 @@ public class MarksEntryForm {
         // --- Table ---
         studentTable = new TableView<>();
         studentTable.setEditable(true);
-        studentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        studentTable.setFixedCellSize(42);
+        studentTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         studentTable.getStyleClass().add("marks-table");
+        studentTable.setPrefHeight(420);
         VBox.setVgrow(studentTable, Priority.ALWAYS);
         setupTableColumns();
 
@@ -229,7 +231,7 @@ public class MarksEntryForm {
         Button refreshBtn = new Button("🔄  Refresh");
         refreshBtn.getStyleClass().addAll("button", "button-secondary");
         refreshBtn.setOnAction(e -> {
-            if (selectedSubjectId > 0) loadStudents(selectedSubjectId, selectedOutOf);
+            if (selectedSubjectId > 0) loadStudents(selectedSubjectId, selectedOutOf.get());
         });
 
         classInfoLabel = new Label();
@@ -241,6 +243,7 @@ public class MarksEntryForm {
 
         VBox studentCard = new VBox(0);
         studentCard.getChildren().addAll(studentHeader, studentEntryArea);
+        VBox.setVgrow(studentEntryArea, Priority.ALWAYS);
         studentEntryArea.getChildren().addAll(statsBar, studentTable, bottomBar);
 
         // ===== LOADING OVERLAY =====
@@ -287,22 +290,28 @@ public class MarksEntryForm {
     private void setupTableColumns() {
         TableColumn<StudentMarkRow, Integer> colPos = new TableColumn<>("#");
         colPos.setCellValueFactory(new PropertyValueFactory<>("pos"));
-        colPos.setPrefWidth(45);
+        colPos.setPrefWidth(40);
+        colPos.setMinWidth(36);
+        colPos.setMaxWidth(50);
         colPos.setResizable(false);
         colPos.getStyleClass().add("col-pos");
 
         TableColumn<StudentMarkRow, String> colAdm = new TableColumn<>("Admission");
         colAdm.setCellValueFactory(new PropertyValueFactory<>("admission"));
-        colAdm.setPrefWidth(120);
+        colAdm.setPrefWidth(115);
+        colAdm.setMinWidth(90);
         colAdm.getStyleClass().add("col-adm");
 
         TableColumn<StudentMarkRow, String> colName = new TableColumn<>("Student Name");
         colName.setCellValueFactory(new PropertyValueFactory<>("name"));
-        colName.setPrefWidth(200);
+        colName.setPrefWidth(190);
+        colName.setMinWidth(120);
         colName.getStyleClass().add("col-name");
 
-        TableColumn<StudentMarkRow, Double> colScore = new TableColumn<>("Score / " + (selectedOutOf > 0 ? selectedOutOf : 100));
-        colScore.setPrefWidth(110);
+        double outOf = selectedOutOf.get() > 0 ? selectedOutOf.get() : 100;
+        TableColumn<StudentMarkRow, Double> colScore = new TableColumn<>("Score / " + outOf);
+        colScore.setPrefWidth(105);
+        colScore.setMinWidth(90);
         colScore.setCellValueFactory(new PropertyValueFactory<>("score"));
         colScore.setEditable(true);
         colScore.setCellFactory(col -> new ScoreCell(this::onScoreEdit));
@@ -311,30 +320,37 @@ public class MarksEntryForm {
 
         TableColumn<StudentMarkRow, String> colGrade = new TableColumn<>("Grade");
         colGrade.setCellValueFactory(new PropertyValueFactory<>("grade"));
-        colGrade.setPrefWidth(65);
+        colGrade.setPrefWidth(60);
+        colGrade.setMinWidth(50);
+        colGrade.setMaxWidth(75);
         colGrade.setCellFactory(col -> new GradeCell());
         colGrade.getStyleClass().add("col-grade");
 
         TableColumn<StudentMarkRow, Integer> colPoints = new TableColumn<>("Pts");
         colPoints.setCellValueFactory(new PropertyValueFactory<>("points"));
-        colPoints.setPrefWidth(55);
+        colPoints.setPrefWidth(50);
+        colPoints.setMinWidth(45);
+        colPoints.setMaxWidth(65);
         colPoints.getStyleClass().add("col-points");
 
         TableColumn<StudentMarkRow, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("statusDisplay"));
-        colStatus.setPrefWidth(80);
+        colStatus.setPrefWidth(85);
+        colStatus.setMinWidth(75);
         colStatus.setCellFactory(col -> new StatusCell());
         colStatus.getStyleClass().add("col-status");
 
         TableColumn<StudentMarkRow, String> colDeviation = new TableColumn<>("Deviation");
         colDeviation.setCellValueFactory(new PropertyValueFactory<>("deviation"));
         colDeviation.setPrefWidth(85);
+        colDeviation.setMinWidth(75);
         colDeviation.setCellFactory(col -> new DeviationCell());
         colDeviation.getStyleClass().add("col-deviation");
 
         TableColumn<StudentMarkRow, String> colComment = new TableColumn<>("Comment");
         colComment.setCellValueFactory(new PropertyValueFactory<>("teacherComment"));
         colComment.setPrefWidth(150);
+        colComment.setMinWidth(100);
         colComment.setEditable(true);
         colComment.setCellFactory(col -> new CommentCell());
         colComment.getStyleClass().add("col-comment");
@@ -348,11 +364,9 @@ public class MarksEntryForm {
         studentTable.getColumns().addAll(colPos, colAdm, colName, colScore, colGrade,
             colPoints, colStatus, colDeviation, colComment, colAction);
 
-        // Update score header when outOf changes
+        // Dynamically update score header when outOf loads
         colScore.textProperty().bind(
-            new SimpleStringProperty("Score / ").concat(
-                new SimpleIntegerProperty(selectedOutOf).asString()
-            )
+            new SimpleStringProperty("Score / ").concat(selectedOutOf.asString())
         );
     }
 
@@ -404,7 +418,7 @@ public class MarksEntryForm {
             }
             try {
                 double val = Double.parseDouble(text);
-                if (val >= 0 && val <= selectedOutOf) {
+                if (val >= 0 && val <= selectedOutOf.get()) {
                     StudentMarkRow row = getTableRow().getItem();
                     if (row != null) {
                         double normalized = analysisService.normalizeByOutOf(val, selectedSubjectId, selectedExamId);
@@ -414,7 +428,7 @@ public class MarksEntryForm {
                         getTableView().refresh();
                     }
                 } else {
-                    UIUtils.showError("Score must be between 0 and " + selectedOutOf);
+                    UIUtils.showError("Score must be between 0 and " + selectedOutOf.get());
                 }
             } catch (NumberFormatException ex) {
                 UIUtils.showError("Enter a valid number.");
@@ -429,7 +443,7 @@ public class MarksEntryForm {
             } else {
                 Double val = getTableRow().getItem().score;
                 field.setText(val != null ? SCORE_FMT.format(val) : "");
-                field.setPromptText("0-" + selectedOutOf);
+                field.setPromptText("0-" + selectedOutOf.get());
                 setGraphic(field);
             }
         }
@@ -836,8 +850,8 @@ public class MarksEntryForm {
         selectedSubjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
         int outOf = getOutOf(selectedExamId, selectedSubjectId);
         if (outOf <= 0) outOf = 100;
-        selectedOutOf = outOf;
-        loadStudents(selectedSubjectId, selectedOutOf);
+        selectedOutOf.set(outOf);
+        loadStudents(selectedSubjectId, selectedOutOf.get());
     }
 
     // ─────────────────────────────────────────────
@@ -913,7 +927,7 @@ public class MarksEntryForm {
     private void loadStudents(long subjectId, int outOf) {
         showLoading(true);
         selectedSubjectId = subjectId;
-        selectedOutOf = outOf;
+        selectedOutOf.set(outOf);
         selectedSubjectName = subjectRepo.getName(subjectId);
         selectedSubjectLabel.setText("📖 " + selectedSubjectName);
         studentEntryArea.setVisible(true);
@@ -922,7 +936,7 @@ public class MarksEntryForm {
 
         int form = formBox.getValue();
         String stream = streamBox.getValue();
-        subLabel.setText("Form " + form + " — " + stream + "  ·  " + selectedOutOf + " marks max");
+        subLabel.setText("Form " + form + " — " + stream + "  ·  " + selectedOutOf.get() + " marks max");
 
         double classAvg = 0;
         try (Connection conn = db.getConnection();
@@ -1043,7 +1057,7 @@ public class MarksEntryForm {
         }
         saveAllBtn.setText("💾  Save All Marks");
         saveAllBtn.setDisable(false);
-        loadStudents(selectedSubjectId, selectedOutOf);
+        loadStudents(selectedSubjectId, selectedOutOf.get());
     }
 
     // ─────────────────────────────────────────────
