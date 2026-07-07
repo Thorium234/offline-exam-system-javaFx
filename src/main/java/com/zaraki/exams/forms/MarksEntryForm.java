@@ -255,15 +255,14 @@ public class MarksEntryForm {
         spinner.setPrefSize(40, 40);
         Label loadingLbl = new Label("Loading...");
         loadingLbl.setFont(Font.font("System", FontWeight.BOLD, 14));
-        loadingLbl.setTextFill(Color.web("#1a237e"));
+        loadingLbl.setTextFill(Color.web("#1E40AF"));
         loadingOverlay.getChildren().addAll(spinner, loadingLbl);
 
         StackPane contentStack = new StackPane();
         VBox.setVgrow(contentStack, Priority.ALWAYS);
-        contentStack.getChildren().addAll(
-            new VBox(15, selectorRow, subjectCardsArea, studentCard),
-            loadingOverlay
-        );
+        VBox contentBox = new VBox(15, selectorRow, subjectCardsArea, studentCard);
+        VBox.setVgrow(studentCard, Priority.ALWAYS);
+        contentStack.getChildren().addAll(contentBox, loadingOverlay);
 
         saveAllBtn.setOnAction(e -> saveAllMarks());
         studentTable.setOnKeyPressed(e -> {
