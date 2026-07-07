@@ -18,6 +18,7 @@ import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
+import java.sql.*;
 import java.util.*;
 
 public class TeacherAssignmentForm {
@@ -85,7 +86,13 @@ public class TeacherAssignmentForm {
         addSubjectBox.setPromptText("Subject");
         addSubjectBox.setPrefWidth(200);
         loadSubjects();
-        addFormBox.setItems(FXCollections.observableArrayList(1, 2, 3, 4));
+        addFormBox.setItems(FXCollections.observableArrayList(streamRepo.findAllForms()));
+        if (addFormBox.getItems().isEmpty()) {
+            // Fallback: query students
+            java.util.Set<Integer> forms = new java.util.TreeSet<>();
+            for (int f = 1; f <= 4; f++) forms.add(f);
+            addFormBox.setItems(FXCollections.observableArrayList(forms));
+        }
         addFormBox.setPromptText("Form");
         addStreamBox.setPromptText("Stream");
         addStreamBox.setPrefWidth(120);

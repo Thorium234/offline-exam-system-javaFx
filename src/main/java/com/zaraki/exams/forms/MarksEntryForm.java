@@ -124,7 +124,8 @@ public class MarksEntryForm {
         VBox subjectGroup = labeledField("Subject", teacherSubjectRow);
 
         HBox formStreamRow = new HBox(8);
-        formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
+        formBox = new ComboBox<>();
+        loadFormsFromDb();
         formBox.setPromptText("Form");
         formBox.setPrefWidth(90);
         streamBox = new ComboBox<>();
@@ -708,8 +709,13 @@ public class MarksEntryForm {
     private void showToast(String message, String type) {
         Label toast = new Label(message);
         toast.setPadding(new Insets(10, 18, 10, 18));
+        String bgColor = switch (type) {
+            case "success" -> "#166534"; // Professional deep green
+            case "error"   -> "#B91C1C"; // Professional deep red
+            default        -> "#1a237e"; // Default navy
+        };
         toast.setStyle(
-            "-fx-background-color: " + ("success".equals(type) ? "#2e7d32" : "#1a237e") + "; "
+            "-fx-background-color: " + bgColor + "; "
             + "-fx-text-fill: white; -fx-background-radius: 8; "
             + "-fx-font-size: 13px; -fx-font-weight: bold; "
             + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 8, 0, 0, 2);"
@@ -934,6 +940,28 @@ public class MarksEntryForm {
     // ─────────────────────────────────────────────
     //  STUDENT LOADING
     // ─────────────────────────────────────────────
+
+    private void loadFormsFromDb() {
+        java.util.Set<Integer> forms = new java.util.TreeSet<>();
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
+            while (rs.next()) forms.add(rs.getInt("form"));
+        } catch (Exception ignored) {}
+        if (forms.isEmpty()) {
+            try (Connection conn = db.getConnection();
+                 Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE deallocated = 0 ORDER BY form")) {
+                while (rs.next()) forms.add(rs.getInt("form"));
+            } catch (Exception ignored) {}
+        }
+        if (forms.isEmpty()) {
+            for (int f = 1; f <= 4; f++) forms.add(f);
+        }
+        Integer current = formBox.getValue();
+        formBox.setItems(FXCollections.observableArrayList(forms));
+        if (current != null && forms.contains(current)) formBox.setValue(current);
+    }
 
     private void loadStudents(long subjectId, int outOf) {
         showLoading(true);

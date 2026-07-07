@@ -13,6 +13,7 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 
+import java.sql.*;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -21,7 +22,7 @@ public class StreamManagementForm {
     private final IStreamRepository streamRepo;
     private final TableView<StreamRow> table = new TableView<>();
     private final ObservableList<StreamRow> data = FXCollections.observableArrayList();
-    private final ComboBox<Integer> formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
+    private final ComboBox<Integer> formBox = new ComboBox<>();
     private final ComboBox<String> streamBox = new ComboBox<>();
     private Button deleteBtn;
     private Label statusLabel;
@@ -45,6 +46,7 @@ public class StreamManagementForm {
         streamBox.setPrefWidth(200);
         streamBox.setEditable(true);
         loadStreamNames();
+        loadStreamForms();
         Button addBtn = new Button("Add Stream");
         addBtn.setStyle("-fx-background-color: " + PRIMARY + "; -fx-text-fill: white; -fx-font-weight: bold;");
         addRow.getChildren().addAll(new Label("Form:"), formBox, new Label("Stream:"), streamBox, addBtn);
@@ -123,6 +125,22 @@ public class StreamManagementForm {
     private void loadStreamNames() {
         Set<String> names = streamRepo.findAllNames();
         streamBox.setItems(FXCollections.observableArrayList(names));
+    }
+
+    private void loadStreamForms() {
+        Set<Integer> forms = streamRepo.findAllForms();
+        if (forms.isEmpty()) {
+            // Fallback: query students table
+            try (Connection conn = DatabaseEngine.getInstance().getConnection();
+                 Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE deallocated = 0 ORDER BY form")) {
+                while (rs.next()) forms.add(rs.getInt("form"));
+            } catch (Exception ignored) {}
+        }
+        if (forms.isEmpty()) {
+            for (int f = 1; f <= 4; f++) forms.add(f);
+        }
+        formBox.setItems(FXCollections.observableArrayList(forms));
     }
 
     private void loadData() {

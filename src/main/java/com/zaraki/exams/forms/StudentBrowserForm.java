@@ -62,33 +62,84 @@ public class StudentBrowserForm {
         sub.setFont(Font.font("System", 14));
         sub.setTextFill(Color.gray(0.5));
 
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(20, 20);
+
         HBox cards = new HBox(20);
         cards.setAlignment(Pos.CENTER);
-        for (int form = 1; form <= 4; form++) {
-            VBox card = new VBox(5);
-            card.setPrefSize(200, 140);
-            card.setAlignment(Pos.CENTER);
-            card.setStyle(CARD_STYLE);
-            Label num = new Label(String.valueOf(form));
-            num.setFont(Font.font("System", FontWeight.BOLD, 48));
-            num.setTextFill(Color.web(PRIMARY));
-            Label lbl = new Label("Form " + form);
-            lbl.setFont(Font.font("System", 14));
-            lbl.setTextFill(Color.gray(0.5));
-            card.getChildren().addAll(num, lbl);
-
-            int f = form;
-            card.setOnMouseEntered(e -> card.setStyle(
-                "-fx-background-color: #e8eaf6; -fx-background-radius: 10; "
-                + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"
-            ));
-            card.setOnMouseExited(e -> card.setStyle(CARD_STYLE));
-            card.setOnMouseClicked(e -> showStudentList(f));
-            cards.getChildren().add(card);
-        }
-
-        view.getChildren().addAll(backBtn, header, sub, cards);
+        view.getChildren().addAll(backBtn, header, sub, spinner, cards);
         setView(view);
+
+        // Load forms dynamically from the database
+        Task<Void> loadTask = new Task<>() {
+            @Override protected Void call() {
+                List<Integer> forms = new ArrayList<>();
+                try (Connection conn = db.getConnection();
+                     Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery(
+                         "SELECT DISTINCT form FROM students WHERE deallocated = 0 ORDER BY form")) {
+                    while (rs.next()) forms.add(rs.getInt("form"));
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+                if (forms.isEmpty()) {
+                    // Fallback: show all 4 forms so the UI isn't blank
+                    for (int f = 1; f <= 4; f++) forms.add(f);
+                }
+                List<Integer> finalForms = forms;
+                Platform.runLater(() -> {
+                    spinner.setVisible(false);
+                    for (int form : finalForms) {
+                        VBox card = new VBox(5);
+                        card.setPrefSize(200, 140);
+                        card.setAlignment(Pos.CENTER);
+                        card.setStyle(CARD_STYLE);
+                        Label num = new Label(String.valueOf(form));
+                        num.setFont(Font.font("System", FontWeight.BOLD, 48));
+                        num.setTextFill(Color.web(PRIMARY));
+                        Label lbl = new Label("Form " + form);
+                        lbl.setFont(Font.font("System", 14));
+                        lbl.setTextFill(Color.gray(0.5));
+                        card.getChildren().addAll(num, lbl);
+                        int f = form;
+                        card.setOnMouseEntered(e -> card.setStyle(
+                            "-fx-background-color: #e8eaf6; -fx-background-radius: 10; "
+                            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"
+                        ));
+                        card.setOnMouseExited(e -> card.setStyle(CARD_STYLE));
+                        card.setOnMouseClicked(e -> showStudentList(f));
+                        cards.getChildren().add(card);
+                    }
+                });
+                return null;
+            }
+        };
+        loadTask.setOnFailed(e -> {
+            spinner.setVisible(false);
+            // Fallback on error
+            for (int form = 1; form <= 4; form++) {
+                VBox card = new VBox(5);
+                card.setPrefSize(200, 140);
+                card.setAlignment(Pos.CENTER);
+                card.setStyle(CARD_STYLE);
+                Label num = new Label(String.valueOf(form));
+                num.setFont(Font.font("System", FontWeight.BOLD, 48));
+                num.setTextFill(Color.web(PRIMARY));
+                Label lbl = new Label("Form " + form);
+                lbl.setFont(Font.font("System", 14));
+                lbl.setTextFill(Color.gray(0.5));
+                card.getChildren().addAll(num, lbl);
+                int f = form;
+                card.setOnMouseEntered(ev -> card.setStyle(
+                    "-fx-background-color: #e8eaf6; -fx-background-radius: 10; "
+                    + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 12, 0, 0, 4);"
+                ));
+                card.setOnMouseExited(ev -> card.setStyle(CARD_STYLE));
+                card.setOnMouseClicked(ev -> showStudentList(f));
+                cards.getChildren().add(card);
+            }
+        });
+        new Thread(loadTask).start();
     }
 
     // ───── Student List with Stream Filter & Pagination ─────

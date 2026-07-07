@@ -44,6 +44,23 @@ public class SubjectAssignmentForm {
         loadSubjects();
     }
 
+    private java.util.Set<Integer> loadFormsFromDb() {
+        java.util.Set<Integer> forms = new java.util.TreeSet<>();
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
+            while (rs.next()) forms.add(rs.getInt("form"));
+        } catch (Exception ignored) {}
+        if (forms.isEmpty()) {
+            try (Connection conn = db.getConnection();
+                 Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE deallocated = 0 ORDER BY form")) {
+                while (rs.next()) forms.add(rs.getInt("form"));
+            } catch (Exception ignored) {}
+        }
+        return forms;
+    }
+
     private void showAssignment() {
         VBox view = new VBox(15);
         view.setPadding(new Insets(20));
@@ -51,7 +68,10 @@ public class SubjectAssignmentForm {
         Label header = UIUtils.makeHeader("Stream Subject Assignment");
 
         HBox controls = new HBox(15);
-        formBox.setItems(FXCollections.observableArrayList(1, 2, 3, 4));
+        formBox.setItems(FXCollections.observableArrayList(loadFormsFromDb()));
+        if (formBox.getItems().isEmpty()) {
+            formBox.setItems(FXCollections.observableArrayList(1, 2, 3, 4));
+        }
         formBox.setPromptText("Select Form");
         formBox.setPrefWidth(150);
 

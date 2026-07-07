@@ -75,7 +75,8 @@ public class BulkMarksForm {
         }
 
         HBox classRow = new HBox(10);
-        formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
+        formBox = new ComboBox<>();
+        loadFormsFromDb();
         formBox.setPromptText("Form");
         formBox.setPrefWidth(100);
         streamBox = new ComboBox<>();
@@ -433,6 +434,28 @@ public class BulkMarksForm {
 
     private void log(String msg) {
         Platform.runLater(() -> logArea.appendText(msg + "\n"));
+    }
+
+    private void loadFormsFromDb() {
+        java.util.Set<Integer> forms = new java.util.TreeSet<>();
+        try (Connection conn = db.getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM streams ORDER BY form")) {
+            while (rs.next()) forms.add(rs.getInt("form"));
+        } catch (Exception ignored) {}
+        if (forms.isEmpty()) {
+            try (Connection conn = db.getConnection();
+                 Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT DISTINCT form FROM students WHERE deallocated = 0 ORDER BY form")) {
+                while (rs.next()) forms.add(rs.getInt("form"));
+            } catch (Exception ignored) {}
+        }
+        if (forms.isEmpty()) {
+            for (int f = 1; f <= 4; f++) forms.add(f);
+        }
+        Integer current = formBox.getValue();
+        formBox.setItems(FXCollections.observableArrayList(forms));
+        if (current != null && forms.contains(current)) formBox.setValue(current);
     }
 
 
