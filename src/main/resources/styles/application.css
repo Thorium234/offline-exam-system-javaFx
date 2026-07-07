@@ -530,7 +530,7 @@
 .student-entry {
     -fx-background-color: -neutral-card;
     -fx-background-radius: 0 0 10 10;
-    -fx-padding: 18 22;
+    -fx-padding: 12 20;
     -fx-border-color: -neutral-border;
     -fx-border-width: 0 1 1 1;
     -fx-border-radius: 0 0 10 10;

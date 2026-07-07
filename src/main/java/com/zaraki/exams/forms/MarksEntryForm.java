@@ -90,7 +90,7 @@ public class MarksEntryForm {
     private VBox viewContainer;
 
     public VBox getView() {
-        viewContainer = new VBox(15);
+        viewContainer = new VBox(12);
         viewContainer.getStyleClass().add("marks-entry-form");
 
         // ===== HEADER =====
@@ -157,7 +157,7 @@ public class MarksEntryForm {
         subjectCardsArea.getStyleClass().add("subject-cards");
 
         // ===== STUDENT ENTRY AREA =====
-        studentEntryArea = new VBox(12);
+        studentEntryArea = new VBox(10);
         studentEntryArea.setVisible(false);
         studentEntryArea.getStyleClass().add("student-entry");
 
@@ -216,6 +216,7 @@ public class MarksEntryForm {
         studentTable = new TableView<>();
         studentTable.setEditable(true);
         studentTable.setFixedCellSize(42);
+        studentTable.setMinHeight(360);
         studentTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
         studentTable.getStyleClass().add("marks-table");
         VBox.setVgrow(studentTable, Priority.ALWAYS);
@@ -245,7 +246,7 @@ public class MarksEntryForm {
         studentCard.getChildren().addAll(studentHeader, studentEntryArea);
         VBox.setVgrow(studentEntryArea, Priority.ALWAYS);
         studentEntryArea.getChildren().addAll(statsBar, studentTable, bottomBar);
-        studentEntryArea.setMinHeight(320);
+        studentEntryArea.setMinHeight(0);
 
         // ===== LOADING OVERLAY =====
         loadingOverlay = new VBox(10);
@@ -261,7 +262,7 @@ public class MarksEntryForm {
 
         StackPane contentStack = new StackPane();
         VBox.setVgrow(contentStack, Priority.ALWAYS);
-        VBox contentBox = new VBox(15, selectorRow, subjectCardsArea, studentCard);
+        VBox contentBox = new VBox(12, selectorRow, subjectCardsArea, studentCard);
         VBox.setVgrow(studentCard, Priority.ALWAYS);
         contentStack.getChildren().addAll(contentBox, loadingOverlay);
 
@@ -931,7 +932,9 @@ public class MarksEntryForm {
         selectedSubjectName = subjectRepo.getName(subjectId);
         selectedSubjectLabel.setText("📖 " + selectedSubjectName);
         studentEntryArea.setVisible(true);
+        studentEntryArea.setManaged(true);
         subjectCardsArea.setVisible(false);
+        subjectCardsArea.setManaged(false);
         masterData.clear();
 
         int form = formBox.getValue();
@@ -1068,7 +1071,9 @@ public class MarksEntryForm {
 
     private void showSubjects() {
         studentEntryArea.setVisible(false);
+        studentEntryArea.setManaged(false);
         subjectCardsArea.setVisible(true);
+        subjectCardsArea.setManaged(true);
         if (!isTeacher) loadSubjects();
     }
 
