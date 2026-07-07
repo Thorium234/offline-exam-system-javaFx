@@ -12,20 +12,25 @@ import com.zaraki.exams.repository.TeacherSubjectRepositoryImpl;
 import com.zaraki.exams.service.IExamAnalysisService;
 import com.zaraki.exams.service.ExamAnalysisServiceImpl;
 import com.zaraki.exams.util.UIUtils;
+import javafx.animation.PauseTransition;
+import javafx.beans.property.*;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.TextFieldTableCell;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import javafx.util.converter.DoubleStringConverter;
+import javafx.util.Duration;
 
 import java.sql.*;
+import java.text.DecimalFormat;
 import java.util.*;
 
 public class MarksEntryForm {
@@ -44,11 +49,16 @@ public class MarksEntryForm {
     private ComboBox<Integer> formBox;
     private ComboBox<String> streamBox;
     private FlowPane subjectCardsArea;
+
     private VBox studentEntryArea;
     private Label selectedSubjectLabel;
     private TableView<StudentMarkRow> studentTable;
     private Button saveAllBtn;
-    private Label statusLabel;
+    private Label classInfoLabel;
+    private TextField searchField;
+
+    // Summary stats labels
+    private Label statAvgValue, statHighestValue, statLowestValue, statCountValue;
 
     private long selectedExamId;
     private long selectedSubjectId;
@@ -57,6 +67,12 @@ public class MarksEntryForm {
 
     private HBox teacherSubjectRow;
     private Button teacherLoadBtn;
+    private VBox loadingOverlay;
+
+    private final ObservableList<StudentMarkRow> masterData = FXCollections.observableArrayList();
+    private FilteredList<StudentMarkRow> filteredData;
+
+    private static final DecimalFormat SCORE_FMT = new DecimalFormat("#0.0");
 
     public MarksEntryForm(DatabaseEngine db, long loggedInUserId, String loggedInRole) {
         this.db = db;
@@ -73,169 +89,655 @@ public class MarksEntryForm {
 
     public VBox getView() {
         viewContainer = new VBox(15);
+        viewContainer.getStyleClass().add("marks-entry-form");
 
-        Label header = UIUtils.makeHeader("Marks Entry");
+        // ===== HEADER =====
+        HBox headerRow = new HBox(12);
+        headerRow.setAlignment(Pos.CENTER_LEFT);
+        Label header = new Label("Marks Entry");
+        header.getStyleClass().add("page-header");
+        headerRow.getChildren().add(header);
+        headerRow.getChildren().add(createNotificationBadge());
 
         Label info = new Label(isTeacher
             ? "Select exam, subject, then stream. Grade & points auto-calculate."
             : "Select exam, class, and subject to enter marks. Grade & points auto-calculate.");
+        info.getStyleClass().add("form-info");
 
-        HBox examRow = new HBox(10);
+        // ===== SELECTORS =====
+        HBox selectorRow = new HBox(20);
+        selectorRow.getStyleClass().add("selector-row");
+
         examBox = new ComboBox<>();
         examBox.setPromptText("Select Exam");
-        examBox.setPrefWidth(300);
+        examBox.setPrefWidth(260);
         loadExams();
-        examRow.getChildren().addAll(new Label("Exam:"), examBox);
+        VBox examGroup = labeledField("Exam", examBox);
 
         teacherSubjectRow = new HBox(10);
         subjectBox = new ComboBox<>();
         subjectBox.setPromptText("Select Subject");
-        subjectBox.setPrefWidth(250);
-        teacherSubjectRow.getChildren().addAll(new Label("Subject:"), subjectBox);
+        subjectBox.setPrefWidth(220);
+        teacherSubjectRow.getChildren().add(subjectBox);
+        VBox subjectGroup = labeledField("Subject", teacherSubjectRow);
 
-        HBox classRow = new HBox(10);
+        HBox formStreamRow = new HBox(8);
         formBox = new ComboBox<>(FXCollections.observableArrayList(1, 2, 3, 4));
         formBox.setPromptText("Form");
+        formBox.setPrefWidth(90);
         streamBox = new ComboBox<>();
         streamBox.setPromptText("Stream");
-        streamBox.setPrefWidth(180);
+        streamBox.setPrefWidth(160);
         streamBox.setEditable(true);
+        formStreamRow.getChildren().addAll(formBox, streamBox);
 
         teacherLoadBtn = new Button("Load Students");
-        teacherLoadBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white;");
+        teacherLoadBtn.getStyleClass().addAll("button", "button-primary");
         teacherLoadBtn.setDisable(true);
 
-        classRow.getChildren().addAll(new Label("Form:"), formBox, new Label("Stream:"), streamBox);
-
         Button loadBtn = new Button("Load Subjects");
-        loadBtn.setStyle("-fx-background-color: #1a237e; -fx-text-fill: white;");
-
-        subjectCardsArea = new FlowPane(12, 12);
-        subjectCardsArea.setPadding(new Insets(5, 0, 5, 0));
-        subjectCardsArea.setVisible(false);
-
-        studentEntryArea = new VBox(10);
-        studentEntryArea.setVisible(false);
-
-        HBox studentHeader = new HBox(10);
-        selectedSubjectLabel = new Label();
-        Button backBtn = new Button("Back to Subjects");
-        backBtn.setOnAction(e -> showSubjects());
-        studentHeader.getChildren().addAll(selectedSubjectLabel, backBtn);
-        studentEntryArea.getChildren().add(studentHeader);
-
-        studentTable = new TableView<>();
-        studentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        studentTable.setEditable(true);
-        VBox.setVgrow(studentTable, Priority.ALWAYS);
-
-        TableColumn<StudentMarkRow, Integer> colPos = new TableColumn<>("#");
-        colPos.setCellValueFactory(new PropertyValueFactory<>("pos"));
-        colPos.setPrefWidth(40);
-
-        TableColumn<StudentMarkRow, String> colAdm = new TableColumn<>("Admission");
-        colAdm.setCellValueFactory(new PropertyValueFactory<>("admission"));
-        colAdm.setPrefWidth(120);
-
-        TableColumn<StudentMarkRow, String> colName = new TableColumn<>("Name");
-        colName.setCellValueFactory(new PropertyValueFactory<>("name"));
-        colName.setPrefWidth(220);
-
-        TableColumn<StudentMarkRow, Double> colScore = new TableColumn<>("Score");
-        colScore.setCellValueFactory(new PropertyValueFactory<>("score"));
-        colScore.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
-        colScore.setOnEditCommit(e -> {
-            StudentMarkRow row = e.getRowValue();
-            Double newVal = e.getNewValue();
-            if (newVal != null && Double.isFinite(newVal) && newVal >= 0 && newVal <= selectedOutOf) {
-                row.score = newVal;
-                String result = analysisService.determineGradeAndPoints(newVal, selectedSubjectId, selectedExamId);
-                String[] parts = result.split("\\|");
-                row.grade = parts[0];
-                row.points = Integer.parseInt(parts[1]);
-                row.dirty = true;
-                studentTable.refresh();
-            } else if (newVal != null && !Double.isFinite(newVal)) {
-                UIUtils.showError("Invalid score value.");
-            } else if (newVal != null) {
-                UIUtils.showError("Score must be between 0 and " + selectedOutOf + ".");
-            }
-        });
-        colScore.setPrefWidth(100);
-
-        TableColumn<StudentMarkRow, String> colGrade = new TableColumn<>("Grade");
-        colGrade.setCellValueFactory(new PropertyValueFactory<>("grade"));
-        colGrade.setPrefWidth(70);
-
-        TableColumn<StudentMarkRow, Integer> colPoints = new TableColumn<>("Points");
-        colPoints.setCellValueFactory(new PropertyValueFactory<>("points"));
-        colPoints.setPrefWidth(70);
-
-        TableColumn<StudentMarkRow, String> colStatus = new TableColumn<>("Status");
-        colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
-        colStatus.setPrefWidth(70);
-        colStatus.setCellFactory(col -> new TableCell<>() {
-            private final ChoiceBox<String> choice = new ChoiceBox<>(
-                FXCollections.observableArrayList("P", "A", "D"));
-            { choice.setPrefWidth(65); choice.setOnAction(e -> {
-                StudentMarkRow row = getTableRow().getItem();
-                if (row != null) { row.status = choice.getValue(); row.dirty = true; }
-            }); }
-            @Override protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
-                    setGraphic(null);
-                } else {
-                    String val = getTableRow().getItem().status;
-                    choice.setValue(val != null ? val : "P");
-                    setGraphic(choice);
-                }
-            }
-        });
-
-        TableColumn<StudentMarkRow, String> colCmt = new TableColumn<>("Comment");
-        colCmt.setCellValueFactory(new PropertyValueFactory<>("teacherComment"));
-        colCmt.setCellFactory(TextFieldTableCell.forTableColumn());
-        colCmt.setOnEditCommit(e -> {
-            StudentMarkRow row = e.getRowValue();
-            row.teacherComment = e.getNewValue();
-            row.dirty = true;
-        });
-        colCmt.setPrefWidth(150);
-
-        TableColumn<StudentMarkRow, String> colDev = new TableColumn<>("Deviation");
-        colDev.setCellValueFactory(new PropertyValueFactory<>("deviation"));
-        colDev.setPrefWidth(80);
-
-        studentTable.getColumns().addAll(colPos, colAdm, colName, colScore, colGrade, colPoints,
-            colStatus, colCmt, colDev);
-
-        HBox saveRow = new HBox(10);
-        saveAllBtn = new Button("Save All Marks");
-        saveAllBtn.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
-        Button refreshBtn = new Button("Refresh");
-        statusLabel = UIUtils.makeStatusLabel();
-        saveRow.getChildren().addAll(saveAllBtn, refreshBtn, statusLabel);
-
-        studentEntryArea.getChildren().addAll(studentTable, saveRow);
+        loadBtn.getStyleClass().addAll("button", "button-primary");
 
         if (isTeacher) {
-            classRow.getChildren().add(teacherLoadBtn);
-            viewContainer.getChildren().addAll(header, info, examRow, teacherSubjectRow, classRow, studentEntryArea);
+            formStreamRow.getChildren().add(teacherLoadBtn);
+            selectorRow.getChildren().addAll(examGroup, subjectGroup, labeledField("Class", formStreamRow));
             setupTeacherActions();
         } else {
-            classRow.getChildren().add(loadBtn);
-            viewContainer.getChildren().addAll(header, info, examRow, classRow, subjectCardsArea, studentEntryArea);
+            formStreamRow.getChildren().add(loadBtn);
+            selectorRow.getChildren().addAll(examGroup, labeledField("Class", formStreamRow));
             loadBtn.setOnAction(e -> loadSubjects());
         }
 
-        saveAllBtn.setOnAction(e -> saveAllMarks());
+        // ===== SUBJECT CARDS =====
+        subjectCardsArea = new FlowPane(12, 12);
+        subjectCardsArea.setPadding(new Insets(5, 0, 5, 0));
+        subjectCardsArea.setVisible(false);
+        subjectCardsArea.getStyleClass().add("subject-cards");
+
+        // ===== STUDENT ENTRY AREA =====
+        studentEntryArea = new VBox(12);
+        studentEntryArea.setVisible(false);
+        studentEntryArea.getStyleClass().add("student-entry");
+
+        // --- Student header bar ---
+        HBox studentHeader = new HBox(16);
+        studentHeader.setAlignment(Pos.CENTER_LEFT);
+        selectedSubjectLabel = new Label();
+        selectedSubjectLabel.getStyleClass().add("subject-title");
+
+        Button backBtn = new Button("← Back to Subjects");
+        backBtn.getStyleClass().addAll("button", "button-link");
+        backBtn.setOnAction(e -> showSubjects());
+
+        HBox headerLeft = new HBox(12);
+        headerLeft.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(headerLeft, Priority.ALWAYS);
+        headerLeft.getChildren().addAll(selectedSubjectLabel, backBtn);
+
+        // Search field
+        searchField = new TextField();
+        searchField.setPromptText("Search by name or admission...");
+        searchField.setPrefWidth(240);
+        searchField.getStyleClass().add("search-field");
+        searchField.textProperty().addListener((obs, old, val) -> {
+            if (filteredData != null) {
+                filteredData.setPredicate(row -> {
+                    if (val == null || val.isBlank()) return true;
+                    String q = val.toLowerCase();
+                    return row.getAdmission().toLowerCase().contains(q)
+                        || row.getName().toLowerCase().contains(q);
+                });
+            }
+        });
+
+        studentHeader.getChildren().addAll(headerLeft, searchField);
+
+        // --- Summary Stats Bar ---
+        HBox statsBar = new HBox(0);
+        statsBar.getStyleClass().add("stats-bar");
+        statAvgValue = new Label("—");
+        statHighestValue = new Label("—");
+        statLowestValue = new Label("—");
+        statCountValue = new Label("—");
+        statsBar.getChildren().addAll(
+            statTile("📊  Class Average", statAvgValue),
+            statTile("⬆  Highest", statHighestValue),
+            statTile("⬇  Lowest", statLowestValue),
+            statTile("👥  Students", statCountValue)
+        );
+
+        // --- Table ---
+        studentTable = new TableView<>();
+        studentTable.setEditable(true);
+        studentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        studentTable.getStyleClass().add("marks-table");
+        VBox.setVgrow(studentTable, Priority.ALWAYS);
+        setupTableColumns();
+
+        // --- Bottom bar ---
+        HBox bottomBar = new HBox(12);
+        bottomBar.setAlignment(Pos.CENTER_LEFT);
+
+        saveAllBtn = new Button("💾  Save All Marks");
+        saveAllBtn.getStyleClass().addAll("button", "button-success", "button-lg");
+
+        Button refreshBtn = new Button("🔄  Refresh");
+        refreshBtn.getStyleClass().addAll("button", "button-secondary");
         refreshBtn.setOnAction(e -> {
             if (selectedSubjectId > 0) loadStudents(selectedSubjectId, selectedOutOf);
         });
 
+        classInfoLabel = new Label();
+        classInfoLabel.getStyleClass().add("status-label");
+        HBox.setHgrow(classInfoLabel, Priority.ALWAYS);
+        classInfoLabel.setAlignment(Pos.CENTER_RIGHT);
+
+        bottomBar.getChildren().addAll(saveAllBtn, refreshBtn, classInfoLabel);
+
+        studentEntryArea.getChildren().addAll(studentHeader, statsBar, studentTable, bottomBar);
+
+        // ===== LOADING OVERLAY =====
+        loadingOverlay = new VBox(10);
+        loadingOverlay.setAlignment(Pos.CENTER);
+        loadingOverlay.getStyleClass().add("loading-overlay");
+        loadingOverlay.setVisible(false);
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(40, 40);
+        Label loadingLbl = new Label("Loading...");
+        loadingLbl.setFont(Font.font("System", FontWeight.BOLD, 14));
+        loadingLbl.setTextFill(Color.web("#1a237e"));
+        loadingOverlay.getChildren().addAll(spinner, loadingLbl);
+
+        StackPane contentStack = new StackPane();
+        VBox.setVgrow(contentStack, Priority.ALWAYS);
+        contentStack.getChildren().addAll(
+            new VBox(15, selectorRow, subjectCardsArea, studentEntryArea),
+            loadingOverlay
+        );
+
+        saveAllBtn.setOnAction(e -> saveAllMarks());
+        studentTable.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.TAB && studentTable.getEditingCell() != null) {
+                int row = studentTable.getEditingCell().getRow();
+                if (row + 1 < studentTable.getItems().size()) {
+                    studentTable.edit(row + 1, studentTable.getColumns().get(3));
+                    e.consume();
+                }
+            }
+        });
+
+        HBox.setHgrow(contentStack, Priority.ALWAYS);
+        VBox.setVgrow(contentStack, Priority.ALWAYS);
+        viewContainer.getChildren().addAll(headerRow, info, contentStack);
         return viewContainer;
     }
+
+    // ─────────────────────────────────────────────
+    //  TABLE SETUP
+    // ─────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private void setupTableColumns() {
+        TableColumn<StudentMarkRow, Integer> colPos = new TableColumn<>("#");
+        colPos.setCellValueFactory(new PropertyValueFactory<>("pos"));
+        colPos.setPrefWidth(45);
+        colPos.setResizable(false);
+        colPos.getStyleClass().add("col-pos");
+
+        TableColumn<StudentMarkRow, String> colAdm = new TableColumn<>("Admission");
+        colAdm.setCellValueFactory(new PropertyValueFactory<>("admission"));
+        colAdm.setPrefWidth(120);
+        colAdm.getStyleClass().add("col-adm");
+
+        TableColumn<StudentMarkRow, String> colName = new TableColumn<>("Student Name");
+        colName.setCellValueFactory(new PropertyValueFactory<>("name"));
+        colName.setPrefWidth(200);
+        colName.getStyleClass().add("col-name");
+
+        TableColumn<StudentMarkRow, Double> colScore = new TableColumn<>("Score / " + (selectedOutOf > 0 ? selectedOutOf : 100));
+        colScore.setPrefWidth(110);
+        colScore.setCellValueFactory(new PropertyValueFactory<>("score"));
+        colScore.setEditable(true);
+        colScore.setCellFactory(col -> new ScoreCell(this::onScoreEdit));
+        colScore.setOnEditCommit(e -> { /* handled by ScoreCell */ });
+        colScore.getStyleClass().add("col-score");
+
+        TableColumn<StudentMarkRow, String> colGrade = new TableColumn<>("Grade");
+        colGrade.setCellValueFactory(new PropertyValueFactory<>("grade"));
+        colGrade.setPrefWidth(65);
+        colGrade.getStyleClass().add("col-grade");
+
+        TableColumn<StudentMarkRow, Integer> colPoints = new TableColumn<>("Pts");
+        colPoints.setCellValueFactory(new PropertyValueFactory<>("points"));
+        colPoints.setPrefWidth(55);
+        colPoints.getStyleClass().add("col-points");
+
+        TableColumn<StudentMarkRow, String> colStatus = new TableColumn<>("Status");
+        colStatus.setCellValueFactory(new PropertyValueFactory<>("statusDisplay"));
+        colStatus.setPrefWidth(80);
+        colStatus.setCellFactory(col -> new StatusCell());
+        colStatus.getStyleClass().add("col-status");
+
+        TableColumn<StudentMarkRow, String> colDeviation = new TableColumn<>("Deviation");
+        colDeviation.setCellValueFactory(new PropertyValueFactory<>("deviation"));
+        colDeviation.setPrefWidth(85);
+        colDeviation.setCellFactory(col -> new DeviationCell());
+        colDeviation.getStyleClass().add("col-deviation");
+
+        TableColumn<StudentMarkRow, String> colComment = new TableColumn<>("Comment");
+        colComment.setCellValueFactory(new PropertyValueFactory<>("teacherComment"));
+        colComment.setPrefWidth(150);
+        colComment.setEditable(true);
+        colComment.setCellFactory(col -> new CommentCell());
+        colComment.getStyleClass().add("col-comment");
+
+        TableColumn<StudentMarkRow, Void> colAction = new TableColumn<>("Action");
+        colAction.setPrefWidth(80);
+        colAction.setCellFactory(col -> new ActionCell(this::saveSingleRow));
+        colAction.getStyleClass().add("col-action");
+        colAction.setSortable(false);
+
+        studentTable.getColumns().addAll(colPos, colAdm, colName, colScore, colGrade,
+            colPoints, colStatus, colDeviation, colComment, colAction);
+
+        // Update score header when outOf changes
+        colScore.textProperty().bind(
+            new SimpleStringProperty("Score / ").concat(
+                new SimpleIntegerProperty(selectedOutOf).asString()
+            )
+        );
+    }
+
+    // ─────────────────────────────────────────────
+    //  SCORE CELL (editable TextField with validation)
+    // ─────────────────────────────────────────────
+
+    private class ScoreCell extends TableCell<StudentMarkRow, Double> {
+        private final TextField field = new TextField();
+        private final PauseTransition commitDelay = new PauseTransition(Duration.millis(600));
+        private boolean committing;
+        private final java.util.function.BiConsumer<StudentMarkRow, Double> onCommit;
+
+        ScoreCell(java.util.function.BiConsumer<StudentMarkRow, Double> onCommit) {
+            this.onCommit = onCommit;
+            field.setPrefWidth(80);
+            field.getStyleClass().add("score-field");
+            field.textProperty().addListener((obs, old, val) -> {
+                if (committing) return;
+                committing = true;
+                commitDelay.setOnFinished(e -> processInput(val));
+                commitDelay.playFromStart();
+                committing = false;
+            });
+            field.focusedProperty().addListener((obs, was, now) -> {
+                if (!now) processInput(field.getText());
+            });
+            // Tab key → move to next row
+            field.setOnKeyPressed(e -> {
+                if (e.getCode() == KeyCode.TAB) {
+                    processInput(field.getText());
+                    int idx = getIndex();
+                    if (idx + 1 < getTableView().getItems().size()) {
+                        getTableView().edit(idx + 1, getTableColumn());
+                    }
+                    e.consume();
+                } else if (e.getCode() == KeyCode.ENTER) {
+                    processInput(field.getText());
+                    e.consume();
+                }
+            });
+        }
+
+        private void processInput(String text) {
+            if (text == null || text.isBlank()) {
+                StudentMarkRow row = getTableRow().getItem();
+                if (row != null) { row.score = null; row.grade = null; row.points = null; row.dirty = true; recalcStats(); }
+                return;
+            }
+            try {
+                double val = Double.parseDouble(text);
+                if (val >= 0 && val <= selectedOutOf) {
+                    StudentMarkRow row = getTableRow().getItem();
+                    if (row != null) {
+                        double normalized = analysisService.normalizeByOutOf(val, selectedSubjectId, selectedExamId);
+                        onCommit.accept(row, normalized);
+                        row.dirty = true;
+                        recalcStats();
+                        getTableView().refresh();
+                    }
+                } else {
+                    UIUtils.showError("Score must be between 0 and " + selectedOutOf);
+                }
+            } catch (NumberFormatException ex) {
+                UIUtils.showError("Enter a valid number.");
+            }
+        }
+
+        @Override
+        protected void updateItem(Double item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                setGraphic(null);
+            } else {
+                Double val = getTableRow().getItem().score;
+                field.setText(val != null ? SCORE_FMT.format(val) : "");
+                field.setPromptText("0-" + selectedOutOf);
+                setGraphic(field);
+            }
+        }
+    }
+
+    private void onScoreEdit(StudentMarkRow row, double normalizedScore) {
+        row.score = normalizedScore;
+        String result = analysisService.determineGradeAndPoints(normalizedScore, selectedSubjectId, selectedExamId);
+        String[] parts = result.split("\\|");
+        row.grade = parts.length > 0 ? parts[0] : "";
+        row.points = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+    }
+
+    // ─────────────────────────────────────────────
+    //  STATUS CELL (auto-calculated with badge)
+    // ─────────────────────────────────────────────
+
+    private static class StatusCell extends TableCell<StudentMarkRow, String> {
+        private final Label badge = new Label();
+        { badge.setPrefWidth(70); badge.setAlignment(Pos.CENTER); }
+
+        @Override
+        protected void updateItem(String item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                setGraphic(null);
+            } else {
+                StudentMarkRow row = getTableRow().getItem();
+                String status = deriveStatus(row);
+                badge.setText(status);
+                badge.getStyleClass().removeAll("badge-present", "badge-absent", "badge-defaulter", "badge-pending");
+                switch (status) {
+                    case "Present" -> badge.getStyleClass().add("badge-present");
+                    case "Absent" -> badge.getStyleClass().add("badge-absent");
+                    case "Defaulter" -> badge.getStyleClass().add("badge-defaulter");
+                    default -> badge.getStyleClass().add("badge-pending");
+                }
+                setGraphic(badge);
+            }
+        }
+
+        private String deriveStatus(StudentMarkRow row) {
+            String s = row.status;
+            if ("A".equalsIgnoreCase(s)) return "Absent";
+            if ("D".equalsIgnoreCase(s)) return "Defaulter";
+            if (row.score != null && row.grade != null && !row.grade.isEmpty()) return "Present";
+            if ("P".equalsIgnoreCase(s)) return "Pending";
+            return "Pending";
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    //  DEVIATION CELL (color-coded)
+    // ─────────────────────────────────────────────
+
+    private static class DeviationCell extends TableCell<StudentMarkRow, String> {
+        private final Label lbl = new Label();
+        { lbl.setAlignment(Pos.CENTER); lbl.setPrefWidth(80); }
+
+        @Override
+        protected void updateItem(String item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                setGraphic(null);
+            } else {
+                StudentMarkRow row = getTableRow().getItem();
+                if (row.score == null) {
+                    setGraphic(null);
+                    return;
+                }
+                // Compute deviation vs class average
+                double avg = computeLocalAvg();
+                double dev = avg > 0 ? Math.round((row.score - avg) * 10.0) / 10.0 : 0;
+                lbl.setText((dev >= 0 ? "+" : "") + SCORE_FMT.format(dev));
+                lbl.setTextFill(dev >= 0 ? Color.web("#2e7d32") : Color.web("#c62828"));
+                lbl.setFont(Font.font("System", FontWeight.BOLD, 12));
+                setGraphic(lbl);
+            }
+        }
+
+        private double computeLocalAvg() {
+            TableView<StudentMarkRow> tv = getTableView();
+            if (tv == null) return 0;
+            double sum = 0, count = 0;
+            for (StudentMarkRow r : tv.getItems()) {
+                if (r.score != null) { sum += r.score; count++; }
+            }
+            return count > 0 ? sum / count : 0;
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    //  COMMENT CELL (tooltip on hover, expandable)
+    // ─────────────────────────────────────────────
+
+    private static class CommentCell extends TableCell<StudentMarkRow, String> {
+        private final TextField field = new TextField();
+        private final PauseTransition delay = new PauseTransition(Duration.millis(400));
+
+        CommentCell() {
+            field.setPrefWidth(130);
+            field.setPromptText("Add comment...");
+            field.textProperty().addListener((obs, old, val) -> {
+                delay.setOnFinished(e -> {
+                    StudentMarkRow row = getTableRow().getItem();
+                    if (row != null) { row.teacherComment = val; row.dirty = true; }
+                });
+                delay.playFromStart();
+            });
+            field.focusedProperty().addListener((obs, was, now) -> {
+                if (!now) {
+                    StudentMarkRow row = getTableRow().getItem();
+                    if (row != null) { row.teacherComment = field.getText(); row.dirty = true; }
+                }
+            });
+        }
+
+        @Override
+        protected void updateItem(String item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                setGraphic(null);
+            } else {
+                field.setText(getTableRow().getItem().teacherComment != null ? getTableRow().getItem().teacherComment : "");
+                setGraphic(field);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    //  ACTION CELL (Save Row button)
+    // ─────────────────────────────────────────────
+
+    private class ActionCell extends TableCell<StudentMarkRow, Void> {
+        private final Button saveBtn = new Button("💾");
+        private final java.util.function.Consumer<StudentMarkRow> onSave;
+
+        ActionCell(java.util.function.Consumer<StudentMarkRow> onSave) {
+            this.onSave = onSave;
+            saveBtn.setPrefWidth(60);
+            saveBtn.getStyleClass().addAll("button", "button-success", "btn-sm");
+            saveBtn.setTooltip(new Tooltip("Save this row"));
+            saveBtn.setOnAction(e -> {
+                StudentMarkRow row = getTableRow().getItem();
+                if (row != null) onSave.accept(row);
+            });
+        }
+
+        @Override
+        protected void updateItem(Void item, boolean empty) {
+            super.updateItem(item, empty);
+            setGraphic(empty ? null : saveBtn);
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    //  SAVE SINGLE ROW
+    // ─────────────────────────────────────────────
+
+    private void saveSingleRow(StudentMarkRow row) {
+        if (selectedExamId == 0 || selectedSubjectId == 0) return;
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status, teacher_comment, deviation) VALUES (?,?,?,?,?,?,?,?,?)")) {
+            ps.setLong(1, selectedExamId);
+            ps.setLong(2, row.studentId);
+            ps.setLong(3, selectedSubjectId);
+            if (row.score != null) ps.setDouble(4, row.score);
+            else ps.setNull(4, java.sql.Types.REAL);
+            ps.setString(5, row.grade);
+            if (row.points != null) ps.setInt(6, row.points);
+            else ps.setNull(6, java.sql.Types.INTEGER);
+            ps.setString(7, row.status != null && !row.status.isEmpty() ? row.status : "P");
+            ps.setString(8, row.teacherComment);
+            ps.setDouble(9, row.score != null ? computeSingleDeviation(row.studentId) : 0);
+            ps.executeUpdate();
+            row.dirty = false;
+            showToast(row.getName() + " saved ✅", "success");
+        } catch (SQLException ex) {
+            UIUtils.showError("Failed to save: " + ex.getMessage());
+        }
+    }
+
+    private double computeSingleDeviation(long studentId) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT AVG(score) FROM marks WHERE exam_id = ? AND subject_id = ? AND score IS NOT NULL")) {
+            ps.setLong(1, selectedExamId);
+            ps.setLong(2, selectedSubjectId);
+            ResultSet rs = ps.executeQuery();
+            double avg = rs.next() ? rs.getDouble(1) : 0;
+            return avg > 0 ? Math.round((getStudentScore(studentId) - avg) * 10.0) / 10.0 : 0;
+        } catch (SQLException e) { return 0; }
+    }
+
+    private double getStudentScore(long studentId) {
+        for (StudentMarkRow r : masterData) {
+            if (r.studentId == studentId && r.score != null) return r.score;
+        }
+        return 0;
+    }
+
+    // ─────────────────────────────────────────────
+    //  TOAST NOTIFICATION
+    // ─────────────────────────────────────────────
+
+    private final VBox toastContainer = new VBox(8);
+    {
+        toastContainer.setAlignment(Pos.TOP_RIGHT);
+        toastContainer.setPadding(new Insets(10));
+        toastContainer.setPickOnBounds(false);
+        toastContainer.setMouseTransparent(true);
+    }
+
+    private Label notificationBadge;
+
+    private Label createNotificationBadge() {
+        notificationBadge = new Label();
+        notificationBadge.setVisible(false);
+        return notificationBadge;
+    }
+
+    private void showToast(String message, String type) {
+        Label toast = new Label(message);
+        toast.setPadding(new Insets(10, 18, 10, 18));
+        toast.setStyle(
+            "-fx-background-color: " + ("success".equals(type) ? "#2e7d32" : "#1a237e") + "; "
+            + "-fx-text-fill: white; -fx-background-radius: 8; "
+            + "-fx-font-size: 13px; -fx-font-weight: bold; "
+            + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 8, 0, 0, 2);"
+        );
+        toast.setOpacity(0);
+        toast.setTranslateX(50);
+        toastContainer.getChildren().add(toast);
+
+        PauseTransition fadeIn = new PauseTransition(Duration.millis(100));
+        fadeIn.setOnFinished(e -> {
+            toast.setOpacity(1);
+            toast.setTranslateX(0);
+        });
+        fadeIn.play();
+
+        PauseTransition dismiss = new PauseTransition(Duration.seconds(3));
+        dismiss.setOnFinished(e -> {
+            toast.setOpacity(0);
+            toast.setTranslateX(50);
+            PauseTransition remove = new PauseTransition(Duration.millis(300));
+            remove.setOnFinished(x -> toastContainer.getChildren().remove(toast));
+            remove.play();
+        });
+        dismiss.play();
+    }
+
+    // ─────────────────────────────────────────────
+    //  STATS BAR HELPERS
+    // ─────────────────────────────────────────────
+
+    private VBox statTile(String label, Label valueLabel) {
+        VBox tile = new VBox(2);
+        tile.setAlignment(Pos.CENTER);
+        tile.setPrefWidth(140);
+        tile.setPadding(new Insets(8, 12, 8, 12));
+        tile.getStyleClass().add("stat-tile");
+        Label lbl = new Label(label);
+        lbl.setFont(Font.font("System", 10));
+        lbl.setTextFill(Color.gray(0.55));
+        valueLabel.setFont(Font.font("System", FontWeight.BOLD, 18));
+        valueLabel.setTextFill(Color.web("#1a237e"));
+        tile.getChildren().addAll(valueLabel, lbl);
+        return tile;
+    }
+
+    private VBox labeledField(String labelText, Node field) {
+        VBox box = new VBox(4);
+        Label lbl = new Label(labelText);
+        lbl.setFont(Font.font("System", FontWeight.BOLD, 11));
+        lbl.setTextFill(Color.gray(0.5));
+        box.getChildren().addAll(lbl, field);
+        return box;
+    }
+
+    // ─────────────────────────────────────────────
+    //  RECALCULATE STATS
+    // ─────────────────────────────────────────────
+
+    private void recalcStats() {
+        double sum = 0, highest = Double.MIN_VALUE, lowest = Double.MAX_VALUE;
+        int scoredCount = 0, total = studentTable.getItems().size();
+        for (StudentMarkRow r : studentTable.getItems()) {
+            if (r.score != null) {
+                sum += r.score;
+                scoredCount++;
+                if (r.score > highest) highest = r.score;
+                if (r.score < lowest) lowest = r.score;
+            }
+        }
+        double avg = scoredCount > 0 ? sum / scoredCount : 0;
+        statAvgValue.setText(scoredCount > 0 ? SCORE_FMT.format(avg) : "—");
+        statHighestValue.setText(scoredCount > 0 ? SCORE_FMT.format(highest) : "—");
+        statLowestValue.setText(scoredCount > 0 ? SCORE_FMT.format(lowest) : "—");
+        statCountValue.setText(String.valueOf(total));
+    }
+
+    // ─────────────────────────────────────────────
+    //  LOADING STATE
+    // ─────────────────────────────────────────────
+
+    private void showLoading(boolean show) {
+        loadingOverlay.setVisible(show);
+        studentTable.setDisable(show);
+        saveAllBtn.setDisable(show);
+    }
+
+    // ─────────────────────────────────────────────
+    //  TEACHER ACTIONS
+    // ─────────────────────────────────────────────
 
     private void setupTeacherActions() {
         examBox.setOnAction(e -> {
@@ -243,18 +745,15 @@ public class MarksEntryForm {
             selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
             loadTeacherSubjects();
         });
-
         subjectBox.setOnAction(e -> {
             if (subjectBox.getValue() == null) return;
             teacherLoadBtn.setDisable(true);
             loadTeacherForms();
         });
-
         formBox.setOnAction(e -> {
             if (formBox.getValue() == null) return;
             loadTeacherStreams();
         });
-
         teacherLoadBtn.setOnAction(e -> loadTeacherMarks());
     }
 
@@ -273,7 +772,6 @@ public class MarksEntryForm {
         long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
         selectedSubjectId = subjectId;
         selectedSubjectName = subjectBox.getValue().split(" - ", 2)[1];
-
         var forms = teacherSubjectRepo.findFormsByTeacherAndSubject(loggedInUserId, subjectId);
         formBox.setItems(FXCollections.observableArrayList(forms));
     }
@@ -282,9 +780,7 @@ public class MarksEntryForm {
         streamBox.getItems().clear();
         int form = formBox.getValue();
         long subjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
-
         var streams = teacherSubjectRepo.findStreamsByTeacherAndSubjectAndForm(loggedInUserId, subjectId, form);
-
         if (streams.size() == 1) {
             streamBox.setItems(FXCollections.observableArrayList(streams));
             streamBox.setValue(streams.iterator().next());
@@ -302,27 +798,17 @@ public class MarksEntryForm {
         if (subjectBox.getValue() == null) { UIUtils.showError("Select a subject."); return; }
         if (formBox.getValue() == null) { UIUtils.showError("Select a form."); return; }
         if (streamBox.getValue() == null || streamBox.getValue().isBlank()) { UIUtils.showError("Select a stream."); return; }
-
         selectedExamId = Long.parseLong(examBox.getValue().split(" - ")[0]);
         selectedSubjectId = Long.parseLong(subjectBox.getValue().split(":")[0]);
-
         int outOf = getOutOf(selectedExamId, selectedSubjectId);
         if (outOf <= 0) outOf = 100;
         selectedOutOf = outOf;
-
         loadStudents(selectedSubjectId, selectedOutOf);
     }
 
-    private int getOutOf(long examId, long subjectId) {
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                 "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?")) {
-            ps.setLong(1, examId);
-            ps.setLong(2, subjectId);
-            ResultSet rs = ps.executeQuery();
-            return rs.next() ? rs.getInt("out_of") : 100;
-        } catch (SQLException e) { return 100; }
-    }
+    // ─────────────────────────────────────────────
+    //  SUBJECT LOADING
+    // ─────────────────────────────────────────────
 
     private void loadSubjects() {
         if (examBox.getValue() == null) { UIUtils.showError("Select an exam."); return; }
@@ -355,36 +841,26 @@ public class MarksEntryForm {
             int outOf = (Integer) entry.get("out_of");
             int markCount = (Integer) entry.get("mark_count");
 
-            VBox card = new VBox(4);
-            card.setPrefSize(180, 90);
+            VBox card = new VBox(6);
+            card.setPrefSize(170, 100);
             card.setAlignment(Pos.CENTER);
-            card.setPadding(new Insets(10));
-            card.setStyle("-fx-background-color: white; -fx-background-radius: 10; "
-                + "-fx-border-color: #e0e0e0; -fx-border-radius: 10; "
-                + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 6, 0, 0, 2);");
+            card.setPadding(new Insets(12));
+            card.getStyleClass().add("subject-card");
 
             Label nameLbl = new Label(name);
-            nameLbl.setFont(Font.font("System", FontWeight.BOLD, 13));
+            nameLbl.getStyleClass().add("subject-card-name");
             nameLbl.setWrapText(true);
             nameLbl.setAlignment(Pos.CENTER);
 
             Label codeLbl = new Label(code + " | " + dept);
-            codeLbl.setFont(Font.font("System", 10));
-            codeLbl.setTextFill(Color.gray(0.5));
+            codeLbl.getStyleClass().add("subject-card-detail");
 
             Label countLbl = new Label(markCount + " marks entered");
-            countLbl.setFont(Font.font("System", 10));
+            countLbl.getStyleClass().add("subject-card-count");
             countLbl.setTextFill(markCount > 0 ? Color.web("#2e7d32") : Color.gray(0.5));
 
             card.getChildren().addAll(nameLbl, codeLbl, countLbl);
-
-            String fg = markCount > 0 ? "#e8f5e9" : "#f5f5f5";
-            card.setStyle(card.getStyle() + "-fx-background-color: " + fg + ";");
-
-            String normalStyle = card.getStyle();
-            card.setOnMouseEntered(e -> card.setStyle(card.getStyle()
-                .replace("-fx-border-color: #e0e0e0", "-fx-border-color: #1a237e")));
-            card.setOnMouseExited(e -> card.setStyle(normalStyle));
+            if (markCount > 0) card.getStyleClass().add("has-marks");
 
             long sid = subjId;
             int oo = outOf;
@@ -393,16 +869,22 @@ public class MarksEntryForm {
         }
 
         subjectCardsArea.setVisible(true);
-        statusLabel.setText("Class: Form " + form + " - " + stream + " | " + studentCount + " students");
+        classInfoLabel.setText("📚 Form " + form + " - " + stream + "  |  👥 " + studentCount + " students");
     }
 
+    // ─────────────────────────────────────────────
+    //  STUDENT LOADING
+    // ─────────────────────────────────────────────
+
     private void loadStudents(long subjectId, int outOf) {
+        showLoading(true);
         selectedSubjectId = subjectId;
         selectedOutOf = outOf;
         selectedSubjectName = subjectRepo.getName(subjectId);
-        selectedSubjectLabel.setText(selectedSubjectName);
+        selectedSubjectLabel.setText("📖 " + selectedSubjectName);
         studentEntryArea.setVisible(true);
         subjectCardsArea.setVisible(false);
+        masterData.clear();
 
         int form = formBox.getValue();
         String stream = streamBox.getValue();
@@ -417,7 +899,6 @@ public class MarksEntryForm {
             if (rs.next()) classAvg = rs.getDouble(1);
         } catch (SQLException e) { /* ignore */ }
 
-        ObservableList<StudentMarkRow> rows = FXCollections.observableArrayList();
         try {
             var students = studentRepo.findByFormStreamWithMarks(selectedExamId, subjectId, form, stream);
             int pos = 0;
@@ -428,43 +909,70 @@ public class MarksEntryForm {
                 String savedStatus = (String) s.get("status");
                 String status = savedStatus != null ? savedStatus : (scoreVal != null ? "P" : "");
                 String comment = (String) s.get("teacher_comment");
-                Double deviation = null;
-                if (scoreVal != null) {
-                    deviation = s.get("deviation") != null ? ((Number) s.get("deviation")).doubleValue()
-                        : (finalClassAvg > 0 ? scoreVal - finalClassAvg : null);
-                }
-                rows.add(new StudentMarkRow(
+                int pts = s.get("points_achieved") != null ? ((Number) s.get("points_achieved")).intValue() : 0;
+                double dev = finalClassAvg > 0 && scoreVal != null
+                    ? Math.round((scoreVal - finalClassAvg) * 10.0) / 10.0 : 0;
+                masterData.add(new StudentMarkRow(
                     pos,
                     (Long) s.get("id"),
                     (String) s.get("admission_number"),
                     (String) s.get("full_name"),
                     scoreVal,
                     (String) s.get("grade_achieved"),
-                    s.get("points_achieved") != null ? ((Number) s.get("points_achieved")).intValue() : null,
+                    pts,
                     status,
                     comment != null ? comment : "",
-                    deviation != null ? String.format("%+.1f", deviation) : ""
+                    dev != 0 ? (dev > 0 ? "+" : "") + SCORE_FMT.format(dev) : ""
                 ));
             }
         } catch (Exception e) { UIUtils.showError(e.getMessage()); }
-        studentTable.setItems(rows);
-        statusLabel.setText(selectedSubjectName + " | " + rows.size() + " students");
+
+        filteredData = new FilteredList<>(masterData, p -> true);
+        studentTable.setItems(filteredData);
+        recalcStats();
+        classInfoLabel.setText("📖 " + selectedSubjectName + "  |  👥 " + masterData.size() + " students");
+        showLoading(false);
+        if (masterData.isEmpty()) showEmptyState();
     }
+
+    // ─────────────────────────────────────────────
+    //  EMPTY STATE
+    // ─────────────────────────────────────────────
+
+    private void showEmptyState() {
+        studentTable.setPlaceholder(new EmptyStatePlaceholder(
+            "No students found for this class.\nAdd students or select a different class.", "👥").getView());
+    }
+
+    // ─────────────────────────────────────────────
+    //  SAVE ALL MARKS
+    // ─────────────────────────────────────────────
 
     private void saveAllMarks() {
         long examId = selectedExamId;
         long subjectId = selectedSubjectId;
         if (examId == 0 || subjectId == 0) return;
+        saveAllBtn.setText("💾  Saving...");
+        saveAllBtn.setDisable(true);
+
+        List<StudentMarkRow> dirtyRows = new ArrayList<>();
+        for (StudentMarkRow row : studentTable.getItems()) {
+            if (row.dirty) dirtyRows.add(row);
+        }
+        if (dirtyRows.isEmpty()) {
+            showToast("No changes to save", "info");
+            saveAllBtn.setText("💾  Save All Marks");
+            saveAllBtn.setDisable(false);
+            return;
+        }
 
         int saved = 0;
-
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                  "INSERT OR REPLACE INTO marks (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status, teacher_comment, deviation) VALUES (?,?,?,?,?,?,?,?,?)")) {
             conn.setAutoCommit(false);
             try {
-                for (StudentMarkRow row : studentTable.getItems()) {
-                    if (!row.dirty) continue;
+                for (StudentMarkRow row : dirtyRows) {
                     String status = (row.status != null && !row.status.isEmpty()) ? row.status : "P";
                     double deviation = 0;
                     if (row.score != null) {
@@ -474,17 +982,11 @@ public class MarksEntryForm {
                     ps.setLong(1, examId);
                     ps.setLong(2, row.studentId);
                     ps.setLong(3, subjectId);
-                    if (row.score != null) {
-                        ps.setDouble(4, row.score);
-                    } else {
-                        ps.setNull(4, java.sql.Types.REAL);
-                    }
+                    if (row.score != null) ps.setDouble(4, row.score);
+                    else ps.setNull(4, java.sql.Types.REAL);
                     ps.setString(5, row.grade);
-                    if (row.points != null) {
-                        ps.setInt(6, row.points);
-                    } else {
-                        ps.setNull(6, java.sql.Types.INTEGER);
-                    }
+                    if (row.points != null) ps.setInt(6, row.points);
+                    else ps.setNull(6, java.sql.Types.INTEGER);
                     ps.setString(7, status);
                     ps.setString(8, row.teacherComment);
                     ps.setDouble(9, deviation);
@@ -493,9 +995,8 @@ public class MarksEntryForm {
                 }
                 ps.executeBatch();
                 conn.commit();
-                String msg = "Saved " + saved + " mark(s)";
-                statusLabel.setText(msg);
-                loadStudents(subjectId, selectedOutOf);
+                for (StudentMarkRow r : dirtyRows) r.dirty = false;
+                showToast(saved + " mark(s) saved successfully ✅", "success");
             } catch (Exception e) {
                 conn.rollback();
                 UIUtils.showError("Failed to save: " + e.getMessage());
@@ -505,7 +1006,14 @@ public class MarksEntryForm {
         } catch (SQLException e) {
             UIUtils.showError("DB error: " + e.getMessage());
         }
+        saveAllBtn.setText("💾  Save All Marks");
+        saveAllBtn.setDisable(false);
+        loadStudents(selectedSubjectId, selectedOutOf);
     }
+
+    // ─────────────────────────────────────────────
+    //  HELPERS
+    // ─────────────────────────────────────────────
 
     private void showSubjects() {
         studentEntryArea.setVisible(false);
@@ -522,6 +1030,17 @@ public class MarksEntryForm {
         } catch (Exception ex) { UIUtils.showError(ex.getMessage()); }
     }
 
+    private int getOutOf(long examId, long subjectId) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?")) {
+            ps.setLong(1, examId);
+            ps.setLong(2, subjectId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getInt("out_of") : 100;
+        } catch (SQLException e) { return 100; }
+    }
+
     private double getClassAverage(long examId, long subjectId) {
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(
@@ -532,6 +1051,10 @@ public class MarksEntryForm {
             return rs.next() ? rs.getDouble(1) : 0;
         } catch (SQLException e) { return 0; }
     }
+
+    // ─────────────────────────────────────────────
+    //  STUDENT MARK ROW MODEL
+    // ─────────────────────────────────────────────
 
     public static class StudentMarkRow {
         private final int pos;
@@ -572,5 +1095,14 @@ public class MarksEntryForm {
         public String getStatus() { return status; }
         public String getTeacherComment() { return teacherComment; }
         public String getDeviation() { return deviation; }
+
+        // Computed property for status display
+        public String getStatusDisplay() {
+            if ("A".equalsIgnoreCase(status)) return "Absent";
+            if ("D".equalsIgnoreCase(status)) return "Defaulter";
+            if (score != null && grade != null) return "Entered";
+            if ("P".equalsIgnoreCase(status)) return "Pending";
+            return "Pending";
+        }
     }
 }
