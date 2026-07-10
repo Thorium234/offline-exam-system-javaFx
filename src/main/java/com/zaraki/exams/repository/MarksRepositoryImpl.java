@@ -44,7 +44,7 @@ public class MarksRepositoryImpl implements IMarksRepository {
                     ps.setLong(3, mark.getSubjectId());
                     ps.setDouble(4, mark.getScore());
                     ps.setString(5, mark.getGradeAchieved());
-                    ps.setObject(6, mark.getPointsAchieved() > 0 ? mark.getPointsAchieved() : null);
+                    ps.setObject(6, mark.getPointsAchieved() >= 0 ? mark.getPointsAchieved() : null);
                     ps.setString(7, mark.getStatus() != null ? mark.getStatus() : "P");
                     ps.setString(8, mark.getTeacherComment());
                     ps.setString(9, mark.getTeacherName());

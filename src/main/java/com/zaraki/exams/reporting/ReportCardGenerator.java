@@ -35,11 +35,13 @@ import com.google.zxing.qrcode.QRCodeWriter;
 public class ReportCardGenerator {
 
     private final DatabaseEngine db;
+    private final com.zaraki.exams.service.IExamAnalysisService analysisService;
     private byte[] cachedLogoBytes;
     private boolean logoLoaded = false;
 
     public ReportCardGenerator() {
         this.db = DatabaseEngine.getInstance();
+        this.analysisService = new com.zaraki.exams.service.ExamAnalysisServiceImpl();
     }
 
     private byte[] getLogoBytes() {
@@ -283,16 +285,7 @@ public class ReportCardGenerator {
     }
 
     private String meanPointsToGrade(double meanPoints) {
-        String sql = "SELECT grade FROM grading_scales WHERE subject_id IS NULL AND points <= ? ORDER BY points DESC LIMIT 1";
-        try (Connection conn = DatabaseEngine.getInstance().getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setDouble(1, meanPoints);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) return rs.getString("grade");
-            return "E";
-        } catch (SQLException e) {
-            return "E";
-        }
+        return analysisService.meanPointsToGrade(meanPoints);
     }
 
     private void addSummary(Document doc, long examId, long studentId) throws DocumentException {
@@ -774,7 +767,7 @@ public class ReportCardGenerator {
                 new Phrase("Sec: " + hashHex, stampFont),
                 36, 32, 0);
         } catch (WriterException | IOException | DocumentException e) {
-            // ignore QR errors silently
+            com.zaraki.exams.util.LoggerUtil.warn("Failed to generate QR code: " + e.getMessage());
         }
     }
 

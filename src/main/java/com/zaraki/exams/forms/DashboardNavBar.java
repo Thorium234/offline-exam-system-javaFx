@@ -68,7 +68,7 @@ public class DashboardNavBar {
             itemNames = List.of("Dashboard", "Marks Entry", "Bulk Marks");
         } else {
             itemNames = List.of("Dashboard", "Students", "Subjects", "Exams",
-                "Grading Scales", "Users", "Teacher Subjects", "Streams",
+                "Grading Scales", "Grading Systems", "Ranking Profiles", "Users", "Teacher Subjects", "Streams",
                 "Stream Subjects", "Settings", "Publish", "Marks Entry",
                 "Bulk Marks", "Analysis", "Reports", "Browse Students", "Recycle Bin");
         }
@@ -143,6 +143,8 @@ public class DashboardNavBar {
             case "Subjects" -> AppTheme.SIDEBAR_ICON_SUBJECTS;
             case "Exams" -> AppTheme.SIDEBAR_ICON_EXAMS;
             case "Grading Scales" -> AppTheme.SIDEBAR_ICON_GRADES;
+            case "Grading Systems" -> AppTheme.SIDEBAR_ICON_GRADES;
+            case "Ranking Profiles" -> AppTheme.SIDEBAR_ICON_GRADES;
             case "Users" -> AppTheme.SIDEBAR_ICON_USERS;
             case "Teacher Subjects" -> AppTheme.SIDEBAR_ICON_TEACHERS;
             case "Streams" -> AppTheme.SIDEBAR_ICON_STREAMS;

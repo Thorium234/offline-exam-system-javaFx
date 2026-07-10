@@ -1,6 +1,15 @@
 package com.zaraki.exams.service;
 
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.model.GradingSystem;
+import com.zaraki.exams.model.GradingSystemEntry;
+import com.zaraki.exams.model.RankingProfile;
+import com.zaraki.exams.model.RankingProfileWeight;
+import com.zaraki.exams.repository.GradingSystemRepositoryImpl;
+import com.zaraki.exams.repository.IGradingSystemRepository;
+import com.zaraki.exams.repository.IRankingProfileRepository;
+import com.zaraki.exams.repository.RankingProfileRepositoryImpl;
+import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
 import java.util.*;
@@ -9,9 +18,136 @@ import java.util.stream.Collectors;
 public class ExamAnalysisServiceImpl implements IExamAnalysisService {
 
     private final DatabaseEngine db;
+    private final IGradingSystemRepository gradingSystemRepo;
+    private final IRankingProfileRepository rankingProfileRepo;
 
     public ExamAnalysisServiceImpl() {
         this.db = DatabaseEngine.getInstance();
+        this.gradingSystemRepo = new GradingSystemRepositoryImpl();
+        this.rankingProfileRepo = new RankingProfileRepositoryImpl();
+    }
+
+    /**
+     * Resolves the grade and points for a normalized score.
+     * Uses active grading_systems if available, falls back to legacy grading_scales.
+     */
+    private String resolveGradeAndPoints(double normalizedScore, Long subjectId) {
+        GradingSystem activeSystem = gradingSystemRepo.findActive();
+        if (activeSystem != null) {
+            List<GradingSystemEntry> entries = gradingSystemRepo.findEntriesBySystem(activeSystem.getId());
+            for (GradingSystemEntry e : entries) {
+                if (e.getSubjectId() == null || e.getSubjectId().equals(subjectId)) {
+                    if (normalizedScore >= e.getMinimumMark() && normalizedScore <= e.getMaximumMark()) {
+                        return e.getGrade() + "|" + e.getPoints();
+                    }
+                }
+            }
+            return "E|0";
+        }
+        return null; // signal to use legacy
+    }
+
+    /**
+     * Resolves the grade letter for a mean-points value.
+     * Uses active grading_systems if available, falls back to legacy grading_scales.
+     */
+    private String resolveMeanPointsToGrade(double meanPoints) {
+        GradingSystem activeSystem = gradingSystemRepo.findActive();
+        if (activeSystem != null) {
+            List<GradingSystemEntry> entries = gradingSystemRepo.findEntriesBySystem(activeSystem.getId());
+            String bestGrade = "E";
+            for (GradingSystemEntry e : entries) {
+                if (e.getSubjectId() == null && e.getPoints() <= meanPoints && e.getPoints() > 0) {
+                    if (bestGrade.equals("E") || e.getPoints() > 0) {
+                        bestGrade = e.getGrade();
+                    }
+                }
+            }
+            return bestGrade;
+        }
+        return null; // signal to use legacy
+    }
+
+    /**
+     * Gets the active ranking profile, or null if none is active.
+     */
+    private RankingProfile getActiveRankingProfile() {
+        return rankingProfileRepo.findActive();
+    }
+
+    /**
+     * Computes a student's total points using the active ranking profile.
+     * Falls back to simple sum if no profile is active.
+     */
+    private double computeWeightedTotal(long studentId, long examId, RankingProfile profile) {
+        if (profile == null) {
+            return computeSimpleTotalPoints(studentId, examId);
+        }
+        return switch (profile.getRankingMethod()) {
+            case RankingProfile.METHOD_WEIGHTED_SUBJECTS -> computeWeightedSubjectsTotal(studentId, examId, profile);
+            case RankingProfile.METHOD_BEST_OF_N -> computeBestOfNTotal(studentId, examId, profile.getBestOfN());
+            default -> computeSimpleTotalPoints(studentId, examId);
+        };
+    }
+
+    private double computeSimpleTotalPoints(long studentId, long examId) {
+        String sql = "SELECT COALESCE(SUM(points_achieved), 0) AS total FROM marks WHERE student_id = ? AND exam_id = ?";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, studentId);
+            ps.setLong(2, examId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getDouble("total") : 0;
+        } catch (SQLException e) {
+            return 0;
+        }
+    }
+
+    private double computeWeightedSubjectsTotal(long studentId, long examId, RankingProfile profile) {
+        List<RankingProfileWeight> weights = rankingProfileRepo.findWeights(profile.getId());
+        if (weights.isEmpty()) return computeSimpleTotalPoints(studentId, examId);
+
+        Map<Long, Double> weightMap = new HashMap<>();
+        for (RankingProfileWeight w : weights) {
+            weightMap.put(w.getSubjectId(), w.getWeight());
+        }
+
+        String sql = "SELECT subject_id, points_achieved FROM marks WHERE student_id = ? AND exam_id = ?";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, studentId);
+            ps.setLong(2, examId);
+            ResultSet rs = ps.executeQuery();
+            double total = 0;
+            while (rs.next()) {
+                long subjId = rs.getLong("subject_id");
+                int pts = rs.getInt("points_achieved");
+                double weight = weightMap.getOrDefault(subjId, 1.0);
+                total += pts * weight;
+            }
+            return Math.round(total * 10.0) / 10.0;
+        } catch (SQLException e) {
+            return 0;
+        }
+    }
+
+    private double computeBestOfNTotal(long studentId, long examId, int n) {
+        if (n <= 0) return computeSimpleTotalPoints(studentId, examId);
+        String sql = "SELECT points_achieved FROM marks WHERE student_id = ? AND exam_id = ? "
+            + "AND (status IS NULL OR status = 'P') AND points_achieved IS NOT NULL "
+            + "ORDER BY points_achieved DESC LIMIT ?";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, studentId);
+            ps.setLong(2, examId);
+            ps.setInt(3, n);
+            ResultSet rs = ps.executeQuery();
+            int total = 0;
+            while (rs.next()) total += rs.getInt(1);
+            return total;
+        } catch (SQLException e) {
+            return 0;
+        }
     }
 
     @Override
@@ -81,6 +217,8 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
 
     @Override
     public List<StudentResult> computeClassRankings(long examId) {
+        RankingProfile activeProfile = getActiveRankingProfile();
+
         String sql = """
             SELECT
                 s.id,
@@ -95,62 +233,86 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             JOIN students s ON s.id = m.student_id
             WHERE m.exam_id = ?
             GROUP BY s.id, s.admission_number, s.full_name, s.form, s.stream
-            ORDER BY total_points DESC
             """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, examId);
             ResultSet rs = ps.executeQuery();
 
-            List<StudentResult> all = new ArrayList<>();
-            List<Double> meanPtsList = new ArrayList<>();
-            int rank = 0;
-            int prevPoints = Integer.MAX_VALUE;
-            int total = 0;
-
+            // Collect all students first, then compute weighted totals
+            record RawStudent(long id, String adm, String name, String form, String stream,
+                              double totalMarks, int rawTotalPoints, double meanPts) {}
+            List<RawStudent> rawStudents = new ArrayList<>();
             while (rs.next()) {
-                total++;
-                int pts = rs.getInt("total_points");
-                if (pts < prevPoints) rank = total;
-                prevPoints = pts;
-                double meanPts = rs.getDouble("mean_points");
-                meanPtsList.add(meanPts);
-                all.add(new StudentResult(
+                rawStudents.add(new RawStudent(
                     rs.getLong("id"),
                     rs.getString("admission_number"),
                     rs.getString("full_name"),
                     rs.getString("form"),
                     rs.getString("stream"),
                     rs.getDouble("total_marks"),
-                    pts,
-                    meanPts,
-                    null, // placeholder
-                    rank,
-                    0,
-                    total,
-                    0
+                    rs.getInt("total_points"),
+                    rs.getDouble("mean_points")
                 ));
             }
             rs.close();
             ps.close();
-            // Compute mean grades after closing the result set
-            for (int i = 0; i < all.size(); i++) {
-                StudentResult sr = all.get(i);
-                String grade = meanPointsToGrade(meanPtsList.get(i));
-                all.set(i, new StudentResult(
-                    sr.studentId(), sr.admissionNumber(), sr.fullName(),
-                    sr.form(), sr.stream(), sr.totalMarks(), sr.totalPoints(), sr.meanPoints(),
-                    grade, sr.classRank(), 0, sr.classSize(), 0
+
+            // Compute effective totals using ranking profile
+            List<StudentResult> all = new ArrayList<>();
+            List<Double> effectiveTotals = new ArrayList<>();
+            for (RawStudent raw : rawStudents) {
+                double effectiveTotal;
+                if (activeProfile != null) {
+                    effectiveTotal = computeWeightedTotal(raw.id(), examId, activeProfile);
+                } else {
+                    effectiveTotal = raw.rawTotalPoints();
+                }
+                effectiveTotals.add(effectiveTotal);
+                all.add(new StudentResult(
+                    raw.id(), raw.adm(), raw.name(), raw.form(), raw.stream(),
+                    raw.totalMarks(), (int) effectiveTotal, raw.meanPts(),
+                    null, 0, 0, 0, 0
                 ));
             }
 
-            Map<String, Long> streamSizes = all.stream()
+            // Sort by effective total descending and assign ranks
+            List<Integer> indices = new ArrayList<>();
+            for (int i = 0; i < all.size(); i++) indices.add(i);
+            indices.sort((a, b) -> Double.compare(effectiveTotals.get(b), effectiveTotals.get(a)));
+
+            List<StudentResult> ranked = new ArrayList<>(Collections.nCopies(all.size(), null));
+            int rank = 0;
+            double prevTotal = Double.MAX_VALUE;
+            int total = 0;
+            for (int idx : indices) {
+                total++;
+                double effectiveTotal = effectiveTotals.get(idx);
+                if (effectiveTotal < prevTotal) rank = total;
+                prevTotal = effectiveTotal;
+
+                StudentResult sr = all.get(idx);
+                double meanPts = sr.meanPoints();
+                String grade = meanPointsToGrade(meanPts);
+
+                ranked.set(idx, new StudentResult(
+                    sr.studentId(), sr.admissionNumber(), sr.fullName(),
+                    sr.form(), sr.stream(), sr.totalMarks(), (int) effectiveTotal,
+                    meanPts, grade, rank, 0, total, 0
+                ));
+            }
+
+            Map<String, Long> streamSizes = ranked.stream()
+                .filter(Objects::nonNull)
                 .collect(Collectors.groupingBy(s -> s.stream(), Collectors.counting()));
-            Map<String, Map<Integer, Integer>> streamRanks = computeStreamRanks(examId, all);
+            Map<String, Map<Integer, Integer>> streamRanks = computeStreamRanks(examId, ranked, effectiveTotals, indices);
+
             List<StudentResult> updated = new ArrayList<>();
-            for (StudentResult sr : all) {
+            for (int i = 0; i < ranked.size(); i++) {
+                StudentResult sr = ranked.get(i);
                 Map<Integer, Integer> sRankMap = streamRanks.getOrDefault(sr.stream(), new HashMap<>());
-                int streamRank = sRankMap.getOrDefault((int) sr.totalPoints(), 1);
+                int effPts = effectiveTotals.get(i).intValue();
+                int streamRank = sRankMap.getOrDefault(effPts, 1);
                 int streamSize = streamSizes.getOrDefault(sr.stream(), 0L).intValue();
                 updated.add(new StudentResult(
                     sr.studentId(), sr.admissionNumber(), sr.fullName(),
@@ -164,40 +326,37 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
         }
     }
 
-    private Map<String, Map<Integer, Integer>> computeStreamRanks(long examId, List<StudentResult> all) {
-        String sql = """
-            SELECT s.stream, COALESCE(SUM(m.points_achieved), 0) AS total_points
-            FROM marks m
-            JOIN students s ON s.id = m.student_id
-            WHERE m.exam_id = ?
-            GROUP BY s.id, s.stream
-            ORDER BY s.stream, total_points DESC
-            """;
-        try (Connection conn = db.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, examId);
-            ResultSet rs = ps.executeQuery();
-            Map<String, Map<Integer, Integer>> result = new HashMap<>();
-            Map<String, Integer> streamCounters = new HashMap<>();
-            Map<String, Integer> streamPrevPoints = new HashMap<>();
-            while (rs.next()) {
-                String stream = rs.getString("stream");
-                int pts = rs.getInt("total_points");
-                streamCounters.put(stream, streamCounters.getOrDefault(stream, 0) + 1);
-                int prev = streamPrevPoints.getOrDefault(stream, Integer.MAX_VALUE);
-                if (pts < prev) {
-                    result.computeIfAbsent(stream, k -> new HashMap<>())
-                          .put(pts, streamCounters.get(stream));
-                } else {
-                    result.computeIfAbsent(stream, k -> new HashMap<>())
-                          .put(pts, result.get(stream).getOrDefault(prev, streamCounters.get(stream)));
-                }
-                streamPrevPoints.put(stream, pts);
+    private Map<String, Map<Integer, Integer>> computeStreamRanks(long examId, List<StudentResult> all,
+                                                                  List<Double> effectiveTotals, List<Integer> indices) {
+        Map<String, Map<Integer, Integer>> result = new HashMap<>();
+        Map<String, Integer> streamCounters = new HashMap<>();
+        Map<String, Double> streamPrevPoints = new HashMap<>();
+
+        // Sort indices by stream, then by effective total descending
+        List<Integer> sortedByStream = new ArrayList<>(indices);
+        sortedByStream.sort((a, b) -> {
+            String sa = all.get(a).stream();
+            String sb = all.get(b).stream();
+            int cmp = sa.compareTo(sb);
+            if (cmp != 0) return cmp;
+            return Double.compare(effectiveTotals.get(b), effectiveTotals.get(a));
+        });
+
+        for (int idx : sortedByStream) {
+            String stream = all.get(idx).stream();
+            double pts = effectiveTotals.get(idx);
+            streamCounters.put(stream, streamCounters.getOrDefault(stream, 0) + 1);
+            double prev = streamPrevPoints.getOrDefault(stream, Double.MAX_VALUE);
+            if (pts < prev) {
+                result.computeIfAbsent(stream, k -> new HashMap<>())
+                      .put((int) pts, streamCounters.get(stream));
+            } else {
+                result.computeIfAbsent(stream, k -> new HashMap<>())
+                      .put((int) pts, result.get(stream).getOrDefault((int) prev, streamCounters.get(stream)));
             }
-            return result;
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to compute stream ranks", e);
+            streamPrevPoints.put(stream, pts);
         }
+        return result;
     }
 
     @Override
@@ -235,12 +394,36 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
 
     @Override
     public void autoGradeExam(long examId) {
+        record UngradedMark(long examId, long studentId, long subjectId, double score) {}
+        List<UngradedMark> ungraded = new ArrayList<>();
         String fetchSql = """
             SELECT m.exam_id, m.student_id, m.subject_id, m.score
             FROM marks m WHERE m.exam_id = ? AND (m.grade_achieved IS NULL OR m.points_achieved IS NULL)
             """;
+        try (Connection conn = db.getConnection();
+             PreparedStatement fetchPs = conn.prepareStatement(fetchSql)) {
+            fetchPs.setLong(1, examId);
+            ResultSet rs = fetchPs.executeQuery();
+            while (rs.next()) {
+                ungraded.add(new UngradedMark(
+                    rs.getLong("exam_id"),
+                    rs.getLong("student_id"),
+                    rs.getLong("subject_id"),
+                    rs.getDouble("score")
+                ));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch ungraded marks", e);
+        }
+
+        if (ungraded.isEmpty()) return;
+
+        GradingSystem activeSystem = gradingSystemRepo.findActive();
+        List<GradingSystemEntry> systemEntries = activeSystem != null
+            ? gradingSystemRepo.findEntriesBySystem(activeSystem.getId()) : null;
+
         String outOfSql = "SELECT out_of FROM exam_subjects WHERE exam_id = ? AND subject_id = ?";
-        String gradeSql = """
+        String legacyGradeSql = """
             SELECT grade, points FROM grading_scales
             WHERE (subject_id IS NULL OR subject_id = ?)
               AND ? BETWEEN minimum_mark AND maximum_mark
@@ -250,48 +433,54 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
         String updateSql = "UPDATE marks SET grade_achieved = ?, points_achieved = ? WHERE exam_id = ? AND student_id = ? AND subject_id = ?";
 
         try (Connection conn = db.getConnection();
-             PreparedStatement fetchPs = conn.prepareStatement(fetchSql);
              PreparedStatement outOfPs = conn.prepareStatement(outOfSql);
-             PreparedStatement gradePs = conn.prepareStatement(gradeSql);
+             PreparedStatement legacyGradePs = conn.prepareStatement(legacyGradeSql);
              PreparedStatement updatePs = conn.prepareStatement(updateSql)) {
 
-            fetchPs.setLong(1, examId);
-            ResultSet rs = fetchPs.executeQuery();
             conn.setAutoCommit(false);
-
             try {
-                while (rs.next()) {
-                    long eId = rs.getLong("exam_id");
-                    long sId = rs.getLong("student_id");
-                    long subjId = rs.getLong("subject_id");
-                    double score = rs.getDouble("score");
-
-                    double normalizedScore = score;
-                    outOfPs.setLong(1, eId);
-                    outOfPs.setLong(2, subjId);
+                for (UngradedMark m : ungraded) {
+                    double normalizedScore = m.score;
+                    outOfPs.setLong(1, m.examId);
+                    outOfPs.setLong(2, m.subjectId);
                     try (ResultSet oo = outOfPs.executeQuery()) {
                         if (oo.next()) {
                             int outOf = oo.getInt("out_of");
-                            if (outOf > 0 && outOf != 100) normalizedScore = (score / outOf) * 100;
+                            if (outOf > 0 && outOf != 100) normalizedScore = (m.score / outOf) * 100;
                         }
                     }
 
                     String grade = null;
                     int points = 0;
-                    gradePs.setLong(1, subjId);
-                    gradePs.setDouble(2, normalizedScore);
-                    try (ResultSet gr = gradePs.executeQuery()) {
-                        if (gr.next()) {
-                            grade = gr.getString("grade");
-                            points = gr.getInt("points");
+
+                    if (systemEntries != null) {
+                        // Dynamic grading system
+                        for (GradingSystemEntry e : systemEntries) {
+                            if (e.getSubjectId() == null || e.getSubjectId().equals(m.subjectId)) {
+                                if (normalizedScore >= e.getMinimumMark() && normalizedScore <= e.getMaximumMark()) {
+                                    grade = e.getGrade();
+                                    points = e.getPoints();
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // Legacy grading_scales
+                        legacyGradePs.setLong(1, m.subjectId);
+                        legacyGradePs.setDouble(2, normalizedScore);
+                        try (ResultSet gr = legacyGradePs.executeQuery()) {
+                            if (gr.next()) {
+                                grade = gr.getString("grade");
+                                points = gr.getInt("points");
+                            }
                         }
                     }
 
                     updatePs.setString(1, grade);
                     updatePs.setInt(2, points);
-                    updatePs.setLong(3, eId);
-                    updatePs.setLong(4, sId);
-                    updatePs.setLong(5, subjId);
+                    updatePs.setLong(3, m.examId);
+                    updatePs.setLong(4, m.studentId);
+                    updatePs.setLong(5, m.subjectId);
                     updatePs.addBatch();
                 }
                 updatePs.executeBatch();
@@ -442,25 +631,29 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
         List<Long> studentOrder = new ArrayList<>();
 
         boolean hasForm = form > 0;
+        boolean hasFilter = validCol != null && !validCol.isEmpty();
         String dataSql;
-        if (validCol.isEmpty() && !hasForm) {
-            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? ORDER BY s.id, m.subject_id";
-        } else if (hasForm && !validCol.isEmpty()) {
-            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + validCol + " = ? AND s.form = ? ORDER BY s.id, m.subject_id";
-        } else if (hasForm) {
-            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s.form = ? ORDER BY s.id, m.subject_id";
-        } else {
-            dataSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ? WHERE s." + validCol + " = ? ORDER BY s.id, m.subject_id";
+        List<Object> params = new ArrayList<>();
+        params.add(examId);
+        String baseSql = "SELECT s.id, s.admission_number, s.full_name, s.stream, m.subject_id, m.score, m.points_achieved FROM students s LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ?";
+        List<String> whereClauses = new ArrayList<>();
+        if (hasFilter) {
+            whereClauses.add("s." + validCol + " = ?");
+            params.add(groupValue);
         }
+        if (hasForm) {
+            whereClauses.add("s.form = ?");
+            params.add(form);
+        }
+        String where = whereClauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", whereClauses);
+        dataSql = baseSql + where + " ORDER BY s.id, m.subject_id";
+
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(dataSql)) {
-            ps.setLong(1, examId);
-            if (!validCol.isEmpty() && !hasForm) {
-                ps.setString(2, groupValue);
-            } else if (!validCol.isEmpty()) {
-                ps.setString(2, groupValue);
-                ps.setInt(3, form);
-            } else if (hasForm) {
-                ps.setInt(2, form);
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Long) ps.setLong(i + 1, (Long) p);
+                else if (p instanceof Integer) ps.setInt(i + 1, (Integer) p);
+                else ps.setString(i + 1, (String) p);
             }
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
@@ -505,29 +698,36 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             }
         }
 
-        record Srd(long id, String adm, String name, String stream, double totalMarks, int totalPts) {}
+        record Srd(long id, String adm, String name, String stream, double totalMarks, double effectiveTotal) {}
+        RankingProfile activeProfile = getActiveRankingProfile();
         List<Srd> ranked = new ArrayList<>();
         for (long sid : studentOrder) {
             var sMap = scores.getOrDefault(sid, Collections.emptyMap());
             double tMarks = sMap.values().stream().mapToDouble(v -> v).sum();
-            var pMap = points.getOrDefault(sid, Collections.emptyMap());
-            int tPts = pMap.values().stream().mapToInt(v -> v).sum();
+            double effectiveTotal;
+            if (activeProfile != null) {
+                effectiveTotal = computeWeightedTotal(sid, examId, activeProfile);
+            } else {
+                var pMap = points.getOrDefault(sid, Collections.emptyMap());
+                effectiveTotal = pMap.values().stream().mapToInt(v -> v).sum();
+            }
             String[] info = studentInfo.get(sid);
-            ranked.add(new Srd(sid, info[0], info[1], info[2], tMarks, tPts));
+            ranked.add(new Srd(sid, info[0], info[1], info[2], tMarks, effectiveTotal));
         }
-        ranked.sort((a, b) -> Integer.compare(b.totalPts, a.totalPts));
+        ranked.sort((a, b) -> Double.compare(b.effectiveTotal, a.effectiveTotal));
 
         List<MeritStudent> resultStudents = new ArrayList<>();
-        int rank = 0, prevPts = Integer.MAX_VALUE;
+        int rank = 0;
+        double prevPts = Double.MAX_VALUE;
         for (int i = 0; i < ranked.size(); i++) {
             Srd rd = ranked.get(i);
-            if (rd.totalPts < prevPts) rank = i + 1;
-            prevPts = rd.totalPts;
+            if (rd.effectiveTotal < prevPts) rank = i + 1;
+            prevPts = rd.effectiveTotal;
 
             var studentScores = scores.getOrDefault(rd.id, Collections.emptyMap());
             var studentPts = points.getOrDefault(rd.id, Collections.emptyMap());
             int subjCount = studentPts.size();
-            double meanPts = subjCount > 0 ? Math.round((double) rd.totalPts / subjCount * 10.0) / 10.0 : 0;
+            double meanPts = subjCount > 0 ? Math.round(rd.effectiveTotal / subjCount * 10.0) / 10.0 : 0;
             String grade = meanPointsToGrade(meanPts);
 
             Map<Long, Double> deviations = new HashMap<>();
@@ -543,7 +743,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             }
 
             resultStudents.add(new MeritStudent(rd.id, rd.adm, rd.name, rd.stream,
-                rd.totalMarks, rd.totalPts, meanPts, grade, rank,
+                rd.totalMarks, (int) Math.round(rd.effectiveTotal), meanPts, grade, rank,
                 studentScores, deviations, studentSubjectPositions));
         }
 
@@ -553,6 +753,12 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
     @Override
     public String determineGradeAndPoints(double score, Long subjectId, Long examId) {
         double normalizedScore = normalizeByOutOf(score, subjectId, examId);
+
+        // Try dynamic grading system first
+        String dynamicResult = resolveGradeAndPoints(normalizedScore, subjectId);
+        if (dynamicResult != null) return dynamicResult;
+
+        // Fall back to legacy grading_scales
         String sql = """
             SELECT grade, points FROM grading_scales
             WHERE (subject_id IS NULL OR subject_id = ?)
@@ -585,7 +791,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             ResultSet rs = ps.executeQuery();
             while (rs.next())
                 list.add(new MeritSubject(rs.getLong("id"), rs.getString("subject_code"), rs.getString("subject_name")));
-        } catch (SQLException e) { /* ignore */ }
+        } catch (SQLException e) { LoggerUtil.warn("Failed to load subjects for exam " + examId + ": " + e.getMessage()); }
         return list;
     }
 
@@ -607,6 +813,11 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
 
     @Override
     public String meanPointsToGrade(double meanPoints) {
+        // Try dynamic grading system first
+        String dynamicResult = resolveMeanPointsToGrade(meanPoints);
+        if (dynamicResult != null) return dynamicResult;
+
+        // Fall back to legacy grading_scales
         String sql = "SELECT grade FROM grading_scales WHERE subject_id IS NULL AND points <= ? ORDER BY points DESC LIMIT 1";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -639,7 +850,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             ps2.setLong(1, examId); ps2.setLong(2, subjectId);
             rs = ps2.executeQuery();
             if (rs.next()) classAvg = rs.getDouble(1);
-        } catch (SQLException e) { /* ignore */ }
+        } catch (SQLException e) { LoggerUtil.warn("Failed to compute deviation for student " + studentId + ": " + e.getMessage()); }
         return classAvg > 0 ? Math.round((studentScore - classAvg) * 10.0) / 10.0 : 0;
     }
 
@@ -664,6 +875,8 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
 
     @Override
     public ExamSummary computeExamSummary(long examId) {
+        GradingSystem activeSystem = gradingSystemRepo.findActive();
+
         String overviewSql = """
             SELECT
                 COUNT(DISTINCT m.student_id) AS total_students,
@@ -672,13 +885,6 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
                 ROUND(MAX(m.score), 1) AS highest_score,
                 ROUND(MIN(m.score), 1) AS lowest_score
             FROM marks m WHERE m.exam_id = ?
-            """;
-        String passSql = """
-            SELECT COUNT(DISTINCT m.student_id) AS pass_count
-            FROM marks m
-            JOIN grading_scales g ON (g.subject_id IS NULL OR g.subject_id = m.subject_id)
-                AND m.score BETWEEN g.minimum_mark AND g.maximum_mark
-            WHERE m.exam_id = ? AND g.points >= 6
             """;
         String bestWorstSql = """
             SELECT sub.subject_name, ROUND(AVG(m.score), 1) AS mean_score
@@ -689,7 +895,6 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps1 = conn.prepareStatement(overviewSql);
-             PreparedStatement ps2 = conn.prepareStatement(passSql);
              PreparedStatement ps3 = conn.prepareStatement(bestWorstSql)) {
 
             ps1.setLong(1, examId);
@@ -704,9 +909,25 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
                 lowest = rs1.getDouble("lowest_score");
             }
 
-            ps2.setLong(1, examId);
-            ResultSet rs2 = ps2.executeQuery();
-            int passCount = rs2.next() ? rs2.getInt("pass_count") : 0;
+            // Compute pass count using dynamic grading system
+            int passCount = 0;
+            String passSql;
+            if (activeSystem != null) {
+                passSql = "SELECT COUNT(DISTINCT student_id) AS pass_count FROM marks WHERE exam_id = ? AND grade_achieved IS NOT NULL AND points_achieved >= 6";
+            } else {
+                passSql = """
+                    SELECT COUNT(DISTINCT m.student_id) AS pass_count
+                    FROM marks m
+                    JOIN grading_scales g ON (g.subject_id IS NULL OR g.subject_id = m.subject_id)
+                        AND m.score BETWEEN g.minimum_mark AND g.maximum_mark
+                    WHERE m.exam_id = ? AND g.points >= 6
+                    """;
+            }
+            try (PreparedStatement ps2 = conn.prepareStatement(passSql)) {
+                ps2.setLong(1, examId);
+                ResultSet rs2 = ps2.executeQuery();
+                passCount = rs2.next() ? rs2.getInt("pass_count") : 0;
+            }
 
             ps3.setLong(1, examId);
             ResultSet rs3 = ps3.executeQuery();

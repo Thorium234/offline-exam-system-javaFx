@@ -60,6 +60,10 @@ public class InMemoryDbExtension implements BeforeAllCallback, AfterEachCallback
                 st.execute("DELETE FROM streams");
                 st.execute("DELETE FROM users");
                 st.execute("DELETE FROM app_settings");
+                st.execute("DELETE FROM grading_system_entries");
+                st.execute("DELETE FROM grading_systems");
+                st.execute("DELETE FROM ranking_profile_weights");
+                st.execute("DELETE FROM ranking_profiles");
                 st.execute("DELETE FROM sqlite_sequence");
                 st.execute("PRAGMA foreign_keys = ON");
             }

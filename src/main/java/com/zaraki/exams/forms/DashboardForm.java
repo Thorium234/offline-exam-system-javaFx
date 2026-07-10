@@ -59,6 +59,8 @@ public class DashboardForm {
     private ReportForm reportForm;
     private StudentBrowserForm studentBrowserForm;
     private RecycleBinForm recycleBinForm;
+    private GradingSystemForm gradingSystemForm;
+    private RankingProfileForm rankingProfileForm;
     private com.zaraki.exams.forms.SubjectAssignmentForm subjectAssignmentForm;
     private com.zaraki.exams.forms.TeacherDashboardForm teacherDashboardForm;
 
@@ -134,6 +136,8 @@ public class DashboardForm {
             case "subjects" -> showSubjects();
             case "exams" -> showExams();
             case "grading_scales" -> showGradingScales();
+            case "grading_systems" -> showGradingSystems();
+            case "ranking_profiles" -> showRankingProfiles();
             case "users" -> showUsers();
             case "teacher_subjects" -> showTeacherSubjects();
             case "streams" -> showStreams();
@@ -338,6 +342,8 @@ public class DashboardForm {
     private void showSubjects() { subjectForm = new SubjectForm(db); setContent(subjectForm.getView()); }
     private void showExams() { examForm = new ExamForm(db); setContent(examForm.getView()); }
     private void showGradingScales() { gradingScaleForm = new GradingScaleForm(settings); setContent(gradingScaleForm.getView()); }
+    private void showGradingSystems() { gradingSystemForm = new GradingSystemForm(); setContent(gradingSystemForm.getView()); }
+    private void showRankingProfiles() { rankingProfileForm = new RankingProfileForm(); setContent(rankingProfileForm.getView()); }
     private void showUsers() { userManagementForm = new UserManagementForm(); setContent(userManagementForm.getView()); }
     private void showTeacherSubjects() { teacherAssignmentForm = new TeacherAssignmentForm(); setContent(teacherAssignmentForm.getView()); }
     private void showStreams() { setContent(new com.zaraki.exams.forms.StreamManagementForm(db).getView()); }

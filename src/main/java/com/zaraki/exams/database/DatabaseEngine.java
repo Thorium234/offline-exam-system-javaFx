@@ -348,6 +348,59 @@ public class DatabaseEngine {
                     value TEXT
                 );
             """);
+
+            // ── Dynamic Grading Systems ────────────────────────────
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS grading_systems (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    system_name TEXT    NOT NULL UNIQUE,
+                    description TEXT,
+                    is_active   INTEGER NOT NULL DEFAULT 0,
+                    created_at  TEXT,
+                    updated_at  TEXT
+                );
+            """);
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS grading_system_entries (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    system_id    INTEGER NOT NULL,
+                    subject_id   INTEGER,
+                    minimum_mark REAL    NOT NULL,
+                    maximum_mark REAL    NOT NULL,
+                    grade        TEXT    NOT NULL,
+                    points       INTEGER NOT NULL,
+                    remarks      TEXT,
+                    FOREIGN KEY (system_id)  REFERENCES grading_systems(id) ON DELETE CASCADE,
+                    FOREIGN KEY (subject_id) REFERENCES subjects(id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_gse_system ON grading_system_entries(system_id);
+            """);
+
+            // ── Dynamic Ranking Profiles ────────────────────────────
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS ranking_profiles (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_name   TEXT NOT NULL UNIQUE,
+                    description    TEXT,
+                    ranking_method TEXT NOT NULL DEFAULT 'TOTAL_POINTS',
+                    best_of_n      INTEGER NOT NULL DEFAULT 0,
+                    is_active      INTEGER NOT NULL DEFAULT 0,
+                    created_at     TEXT,
+                    updated_at     TEXT
+                );
+            """);
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS ranking_profile_weights (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_id INTEGER NOT NULL,
+                    subject_id INTEGER NOT NULL,
+                    weight     REAL    NOT NULL DEFAULT 1.0,
+                    FOREIGN KEY (profile_id) REFERENCES ranking_profiles(id) ON DELETE CASCADE,
+                    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+                    UNIQUE(profile_id, subject_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_rpw_profile ON ranking_profile_weights(profile_id);
+            """);
         }
     }
 
