@@ -13,10 +13,11 @@ public class PasswordUtils {
 
     private static final int ITERATIONS = 600_000;
     private static final int KEY_LENGTH = 256;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     public static String generateSalt() {
         byte[] salt = new byte[16];
-        new SecureRandom().nextBytes(salt);
+        SECURE_RANDOM.nextBytes(salt);
         return Base64.getEncoder().encodeToString(salt);
     }
 

@@ -326,17 +326,22 @@ public class StudentRepositoryImpl implements IStudentRepository {
         try (Connection conn = db.getConnection()) {
             conn.setAutoCommit(false);
             try (PreparedStatement delMarks = conn.prepareStatement("DELETE FROM marks WHERE student_id = ?");
+                 PreparedStatement delSubjects = conn.prepareStatement("DELETE FROM student_subjects WHERE student_id = ?");
                  PreparedStatement delStud = conn.prepareStatement("DELETE FROM students WHERE id = ?")) {
                 for (Long id : ids) {
                     delMarks.setLong(1, id); delMarks.addBatch();
+                    delSubjects.setLong(1, id); delSubjects.addBatch();
                     delStud.setLong(1, id); delStud.addBatch();
                 }
                 delMarks.executeBatch();
+                delSubjects.executeBatch();
                 delStud.executeBatch();
                 conn.commit();
             } catch (SQLException e) {
                 conn.rollback();
                 throw e;
+            } finally {
+                conn.setAutoCommit(true);
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);

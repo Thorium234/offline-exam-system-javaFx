@@ -76,6 +76,25 @@ class ExamAnalysisServiceTest extends DatabaseTestBase {
     }
 
     @Test
+    void computeClassRankings_ignoresAbsentMarks() {
+        long subj = insertSubject("MATH", "Mathematics", "Mathematics", "Compulsory");
+        long exam = insertExam("2026", "Term 1", "End Term");
+        long present = insertStudent("1001", "Alice", 1, "East");
+        long absent = insertStudent("1002", "Bob", 1, "East");
+        insertExamSubject(exam, subj, 100);
+        insertMark(exam, present, subj, 70, "B", 10);
+        insertMarkWithStatus(exam, absent, subj, 100, "A", 12, "A");
+        insertGradeScale(null, 80, 100, "A", 12, "Excellent");
+        insertGradeScale(null, 60, 79, "B", 10, "Good");
+
+        var rankings = service.computeClassRankings(exam);
+
+        assertEquals(1, rankings.size());
+        assertEquals(present, rankings.get(0).studentId());
+        assertEquals(1, rankings.get(0).classRank());
+    }
+
+    @Test
     void denseRanking_withTies() {
         long subj = insertSubject("MATH", "Mathematics", "Mathematics", "Compulsory");
         long exam = insertExam("2026", "Term 1", "End Term");
@@ -113,6 +132,33 @@ class ExamAnalysisServiceTest extends DatabaseTestBase {
         var metrics = service.computeSubjectMetrics(exam);
         assertEquals(1, metrics.size());
         assertTrue(metrics.get(0).stdDev() > 0);
+    }
+
+    @Test
+    void computeSubjectMetrics_usesTieAwareRanksAndPresentMarksOnly() {
+        long math = insertSubject("MATH", "Mathematics", "Mathematics", "Compulsory");
+        long eng = insertSubject("ENG", "English", "Languages", "Compulsory");
+        long sci = insertSubject("SCI", "Science", "Science", "Compulsory");
+        long exam = insertExam("2026", "Term 1", "End Term");
+        long student = insertStudent("1001", "Alice", 1, "East");
+        long absent = insertStudent("1002", "Bob", 1, "East");
+        insertExamSubject(exam, math, 100);
+        insertExamSubject(exam, eng, 100);
+        insertExamSubject(exam, sci, 100);
+        insertMark(exam, student, math, 80, "A", 12);
+        insertMark(exam, student, eng, 80, "A", 12);
+        insertMark(exam, student, sci, 60, "B", 10);
+        insertMarkWithStatus(exam, absent, sci, 100, "A", 12, "A");
+
+        var metrics = service.computeSubjectMetrics(exam);
+
+        assertEquals(3, metrics.size());
+        assertEquals(1, metrics.get(0).subjectRank());
+        assertEquals(1, metrics.get(1).subjectRank());
+        assertEquals(3, metrics.get(2).subjectRank());
+        assertEquals("Science", metrics.get(2).subjectName());
+        assertEquals(60.0, metrics.get(2).meanScore());
+        assertEquals(1, metrics.get(2).totalCandidates());
     }
 
     @Test
@@ -411,5 +457,27 @@ class ExamAnalysisServiceTest extends DatabaseTestBase {
     void computeMeanGradeFromPoints() {
         // Default grading scale has A-=11, so 11 points maps to A-
         assertEquals("A-", service.computeMeanGradeFromPoints(11));
+    }
+
+    private void insertMarkWithStatus(long examId, long studentId, long subjectId, double score,
+                                      String grade, int points, String status) {
+        String sql = """
+            INSERT INTO marks
+                (exam_id, student_id, subject_id, score, grade_achieved, points_achieved, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """;
+        try (var conn = getConnection();
+             var ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, examId);
+            ps.setLong(2, studentId);
+            ps.setLong(3, subjectId);
+            ps.setDouble(4, score);
+            ps.setString(5, grade);
+            ps.setInt(6, points);
+            ps.setString(7, status);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

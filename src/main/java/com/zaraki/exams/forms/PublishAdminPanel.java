@@ -264,13 +264,13 @@ public class PublishAdminPanel {
                     subjectId = rs.getLong("id");
                 }
                 Map<String, Long> studentMap = new HashMap<>();
-                String studentSql;
-                if (form != null && stream != null && !stream.isEmpty())
-                    studentSql = "SELECT id, admission_number FROM students WHERE form = ? AND stream = ? AND deallocated = 0";
-                else
-                    studentSql = "SELECT id, admission_number FROM students WHERE deallocated = 0";
-                try (PreparedStatement ps = db.getConnection().prepareStatement(studentSql)) {
-                    if (form != null && stream != null && !stream.isEmpty()) { ps.setInt(1, form); ps.setString(2, stream); }
+                boolean hasClassFilter = form != null && stream != null && !stream.isEmpty();
+                try (PreparedStatement ps = hasClassFilter
+                         ? db.getConnection().prepareStatement(
+                             "SELECT id, admission_number FROM students WHERE form = ? AND stream = ? AND deallocated = 0")
+                         : db.getConnection().prepareStatement(
+                             "SELECT id, admission_number FROM students WHERE deallocated = 0")) {
+                    if (hasClassFilter) { ps.setInt(1, form); ps.setString(2, stream); }
                     ResultSet rs = ps.executeQuery();
                     while (rs.next()) studentMap.put(rs.getString("admission_number"), rs.getLong("id"));
                 }

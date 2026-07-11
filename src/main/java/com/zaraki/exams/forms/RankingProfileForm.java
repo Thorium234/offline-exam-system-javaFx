@@ -350,7 +350,7 @@ public class RankingProfileForm {
         if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
         try {
             repo.deleteProfile(row.getId());
-            if (selectedProfileId != null && selectedProfileId == row.getId()) {
+            if (selectedProfileId != null && selectedProfileId.equals(row.getId())) {
                 selectedProfileId = null;
                 weightData.clear();
             }

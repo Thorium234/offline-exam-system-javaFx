@@ -5,12 +5,14 @@ import com.lowagie.text.Font;
 import com.lowagie.text.pdf.*;
 import com.zaraki.exams.config.SettingsManager;
 import com.zaraki.exams.database.DatabaseEngine;
+import com.zaraki.exams.util.LoggerUtil;
 import static com.zaraki.exams.database.DatabaseEngine.validateFilterColumn;
 
 import java.awt.*;
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -54,7 +56,9 @@ public class ReportCardGenerator {
                     if (java.nio.file.Files.exists(p))
                         cachedLogoBytes = java.nio.file.Files.readAllBytes(p);
                 }
-            } catch (Exception ignored) {}
+            } catch (IOException | RuntimeException e) {
+                LoggerUtil.warn("Failed to load school logo: " + e.getMessage());
+            }
         }
         return cachedLogoBytes;
     }
@@ -79,7 +83,9 @@ public class ReportCardGenerator {
                 cb.setGState(gs);
                 cb.addImage(logo, logo.getScaledWidth(), 0, 0, logo.getScaledHeight(), x, y);
                 cb.restoreState();
-            } catch (Exception ignored) {}
+            } catch (DocumentException | IOException e) {
+                LoggerUtil.warn("Failed to render report background logo: " + e.getMessage());
+            }
         }
     }
 
@@ -521,7 +527,9 @@ public class ReportCardGenerator {
                 36
             );
             writer.getDirectContent().addImage(stamp);
-        } catch (Exception ignored) {}
+        } catch (DocumentException | IOException e) {
+            LoggerUtil.warn("Failed to add report stamp: " + e.getMessage());
+        }
     }
 
     public void generateBulkStudentReports(long examId, String groupBy, String groupValue, Path outputPath) {
@@ -734,7 +742,7 @@ public class ReportCardGenerator {
         try {
             String raw = studentId + "|" + examId + "|" + LocalDateTime.now().toString();
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(raw.getBytes());
+            byte[] hash = md.digest(raw.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
             for (byte b : hash) {
                 hex.append(String.format("%02x", b));

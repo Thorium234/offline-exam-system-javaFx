@@ -346,7 +346,7 @@ public class GradingSystemForm {
         if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
         try {
             repo.deleteSystem(row.getId());
-            if (selectedSystemId != null && selectedSystemId == row.getId()) {
+            if (selectedSystemId != null && selectedSystemId.equals(row.getId())) {
                 selectedSystemId = null;
                 entryData.clear();
             }

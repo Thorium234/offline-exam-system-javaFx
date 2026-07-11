@@ -145,10 +145,15 @@ public class ExamRepositoryImpl implements IExamRepository {
 
     public List<Long> findLatestIds(int limit) {
         List<Long> ids = new ArrayList<>();
+        if (limit <= 0) {
+            return ids;
+        }
         try (Connection conn = db.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT id FROM exams ORDER BY id DESC LIMIT " + limit)) {
-            while (rs.next()) ids.add(rs.getLong("id"));
+             PreparedStatement ps = conn.prepareStatement("SELECT id FROM exams ORDER BY id DESC LIMIT ?")) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getLong("id"));
+            }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

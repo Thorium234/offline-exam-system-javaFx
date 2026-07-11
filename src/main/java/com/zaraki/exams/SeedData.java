@@ -5,7 +5,7 @@ import com.zaraki.exams.database.DatabaseEngine;
 import com.zaraki.exams.util.LoggerUtil;
 
 import java.sql.*;
-import java.util.Random;
+import java.util.SplittableRandom;
 import java.util.logging.Logger;
 
 public class SeedData {
@@ -189,7 +189,7 @@ public class SeedData {
         int count = 0;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            Random rng = new Random(form * 100 + stream.charAt(0));
+            SplittableRandom rng = new SplittableRandom(form * 100L + stream.charAt(0));
             for (int i = 1; i <= 20; i++) {
                 String adm = String.format("%04d/F%d%s", i, form, stream);
                 String fName = FIRST_NAMES[rng.nextInt(FIRST_NAMES.length)];
@@ -224,7 +224,7 @@ public class SeedData {
             java.util.List<Long> studentIds = new java.util.ArrayList<>();
             while (stuRs.next()) studentIds.add(stuRs.getLong("id"));
 
-            Random rng = new Random(examId);
+            SplittableRandom rng = new SplittableRandom(examId);
             conn.setAutoCommit(false);
             try {
                 int count = 0;

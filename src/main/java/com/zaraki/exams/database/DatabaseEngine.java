@@ -277,34 +277,6 @@ public class DatabaseEngine {
                     int rows = ups.executeUpdate();
                     LoggerUtil.info("Admin user seeded (rows affected: " + rows + ")");
                 }
-            } else {
-                String admSalt;
-                String admHash;
-                try (var rs = stmt.executeQuery("SELECT salt, password_hash FROM users WHERE username='admin'")) {
-                    if (rs.next()) {
-                        admSalt = rs.getString("salt");
-                        admHash = rs.getString("password_hash");
-                    } else {
-                        admSalt = null;
-                        admHash = null;
-                    }
-                }
-                if (admSalt != null && admHash != null) {
-                    boolean matches = PasswordUtils.verify("admin", admSalt, admHash);
-                    LoggerUtil.info("Admin password matches 'admin': " + matches);
-                    if (!matches) {
-                        LoggerUtil.warn("Admin password does NOT match 'admin' — force-resetting");
-                        String newSalt = PasswordUtils.generateSalt();
-                        String newHash = PasswordUtils.hashPassword("admin", newSalt);
-                        try (var ups = conn.prepareStatement(
-                                "UPDATE users SET password_hash=?, salt=? WHERE username='admin'")) {
-                            ups.setString(1, newHash);
-                            ups.setString(2, newSalt);
-                            int rows = ups.executeUpdate();
-                            LoggerUtil.info("Admin password force-reset (rows affected: " + rows + ")");
-                        }
-                    }
-                }
             }
 
             stmt.execute("""

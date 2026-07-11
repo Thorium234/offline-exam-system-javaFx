@@ -2,8 +2,12 @@ package com.zaraki.exams.repository;
 
 import com.zaraki.exams.DatabaseTestBase;
 import com.zaraki.exams.auth.PasswordUtils;
+import com.zaraki.exams.database.DatabaseEngine;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -85,9 +89,45 @@ class UserRepositoryTest extends DatabaseTestBase {
     }
 
     @Test
+    void adminPasswordChangeSurvivesDatabaseEngineRestart() throws Exception {
+        long adminId = repo.resolveUserId("admin");
+        String salt = PasswordUtils.generateSalt();
+        String hash = PasswordUtils.hashPassword("changed-admin-password", salt);
+        repo.changePassword(adminId, hash, salt);
+
+        resetDatabaseEngineSingleton();
+        new UserRepositoryImpl();
+
+        Map<String, Object> admin = new UserRepositoryImpl().findByUsername("admin");
+        assertEquals(hash, admin.get("password_hash"));
+        assertEquals(salt, admin.get("salt"));
+        assertTrue(PasswordUtils.verify("changed-admin-password", salt, hash));
+    }
+
+    @Test
     void duplicateUsername_throws() {
         String salt = PasswordUtils.generateSalt();
         repo.insert("testuser", "hash", salt, "Test", "teacher");
         assertThrows(RuntimeException.class, () -> repo.insert("testuser", "hash2", salt, "Test2", "teacher"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void resetDatabaseEngineSingleton() throws Exception {
+        Field holderField = DatabaseEngine.class.getDeclaredField("connectionHolder");
+        holderField.setAccessible(true);
+        ThreadLocal<Connection> holder = (ThreadLocal<Connection>) holderField.get(null);
+        Connection oldConn = holder.get();
+        if (oldConn != null) {
+            try {
+                oldConn.close();
+            } catch (SQLException ignored) {
+                // best effort cleanup for simulated restart
+            }
+        }
+        holder.remove();
+
+        Field instanceField = DatabaseEngine.class.getDeclaredField("instance");
+        instanceField.setAccessible(true);
+        instanceField.set(null, null);
     }
 }

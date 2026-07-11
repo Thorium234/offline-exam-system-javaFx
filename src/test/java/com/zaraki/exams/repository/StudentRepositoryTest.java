@@ -197,6 +197,18 @@ class StudentRepositoryTest extends DatabaseTestBase {
     }
 
     @Test
+    void batchPermanentDelete_removesSubjectEnrollments() {
+        long subject = insertSubject("MATH", "Mathematics", "Math", "Compulsory");
+        repo.insert("1001", "Alice", 1, "East");
+        insertStudentSubject(1L, subject);
+
+        repo.batchPermanentDelete(Set.of(1L));
+
+        assertNull(repo.findById(1L));
+        assertTrue(repo.getEnrolledSubjectIds(1L).isEmpty());
+    }
+
+    @Test
     void duplicateAdmission_numberThrows() {
         repo.insert("1001", "Alice", 1, "East");
         assertThrows(RuntimeException.class, () -> repo.insert("1001", "Duplicate", 1, "East"));

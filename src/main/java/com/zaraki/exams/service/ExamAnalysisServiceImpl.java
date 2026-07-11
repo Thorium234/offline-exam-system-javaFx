@@ -91,7 +91,8 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
     }
 
     private double computeSimpleTotalPoints(long studentId, long examId) {
-        String sql = "SELECT COALESCE(SUM(points_achieved), 0) AS total FROM marks WHERE student_id = ? AND exam_id = ?";
+        String sql = "SELECT COALESCE(SUM(points_achieved), 0) AS total FROM marks "
+            + "WHERE student_id = ? AND exam_id = ? AND (status IS NULL OR status = 'P')";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, studentId);
@@ -112,7 +113,8 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             weightMap.put(w.getSubjectId(), w.getWeight());
         }
 
-        String sql = "SELECT subject_id, points_achieved FROM marks WHERE student_id = ? AND exam_id = ?";
+        String sql = "SELECT subject_id, points_achieved FROM marks "
+            + "WHERE student_id = ? AND exam_id = ? AND (status IS NULL OR status = 'P')";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, studentId);
@@ -155,7 +157,8 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
         String sql = """
             WITH subject_avgs AS (
                 SELECT subject_id, AVG(score) AS avg_score
-                FROM marks WHERE exam_id = ?
+                FROM marks
+                WHERE exam_id = ? AND (status IS NULL OR status = 'P')
                 GROUP BY subject_id
             )
             SELECT
@@ -169,7 +172,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             FROM marks m
             JOIN subjects sub ON sub.id = m.subject_id
             JOIN subject_avgs sa ON sa.subject_id = m.subject_id
-            WHERE m.exam_id = ?
+            WHERE m.exam_id = ? AND (m.status IS NULL OR m.status = 'P')
             GROUP BY sub.id, sub.subject_name, sub.department
             ORDER BY mean_score DESC
             """;
@@ -185,6 +188,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
             List<Double> means = new ArrayList<>();
             List<Double> devs = new ArrayList<>();
             List<Integer> counts = new ArrayList<>();
+            List<Integer> ranks = new ArrayList<>();
             int rank = 0;
             double prevMean = Double.MAX_VALUE;
             while (rs.next()) {
@@ -197,6 +201,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
                 means.add(mean);
                 devs.add(rs.getDouble("std_dev"));
                 counts.add(rs.getInt("candidates"));
+                ranks.add(rank);
             }
             rs.close();
             ps.close();
@@ -206,7 +211,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
                 String meanGrade = gp.split("\\|")[0];
                 list.add(new SubjectMetrics(
                     ids.get(i), names.get(i), depts.get(i),
-                    means.get(i), meanGrade, devs.get(i), rank + i, counts.get(i)
+                    means.get(i), meanGrade, devs.get(i), ranks.get(i), counts.get(i)
                 ));
             }
             return list;
@@ -231,7 +236,7 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
                 ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points
             FROM marks m
             JOIN students s ON s.id = m.student_id
-            WHERE m.exam_id = ?
+            WHERE m.exam_id = ? AND (m.status IS NULL OR m.status = 'P')
             GROUP BY s.id, s.admission_number, s.full_name, s.form, s.stream
             """;
         try (Connection conn = db.getConnection();
@@ -362,7 +367,8 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
     @Override
     public Map<Long, Double> getExamStudentTotals(long examId) {
         Map<Long, Double> map = new HashMap<>();
-        String sql = "SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks WHERE exam_id = ? GROUP BY student_id";
+        String sql = "SELECT student_id, ROUND(SUM(score), 1) AS total FROM marks "
+            + "WHERE exam_id = ? AND (status IS NULL OR status = 'P') GROUP BY student_id";
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, examId);

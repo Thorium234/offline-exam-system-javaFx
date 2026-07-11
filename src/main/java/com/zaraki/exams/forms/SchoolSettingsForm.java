@@ -63,7 +63,13 @@ public class SchoolSettingsForm {
         logoPreview.setFitHeight(80);
         logoPreview.setPreserveRatio(true);
         String curLogo = settings.getLogoPath();
-        if (curLogo != null && !curLogo.isBlank()) try { logoPreview.setImage(new Image(new java.io.File(curLogo).toURI().toString())); } catch (Exception ignored) {}
+        if (curLogo != null && !curLogo.isBlank()) {
+            try {
+                logoPreview.setImage(new Image(new java.io.File(curLogo).toURI().toString()));
+            } catch (RuntimeException ex) {
+                UIUtils.showError("Failed to load logo preview: " + ex.getMessage());
+            }
+        }
         TextField logoPathField = new TextField(curLogo);
         logoPathField.setPrefWidth(300);
         logoPathField.setEditable(false);
@@ -80,7 +86,13 @@ public class SchoolSettingsForm {
         stampPreview.setFitHeight(60);
         stampPreview.setPreserveRatio(true);
         String curStamp = settings.getStampPath();
-        if (curStamp != null && !curStamp.isBlank()) try { stampPreview.setImage(new Image(new java.io.File(curStamp).toURI().toString())); } catch (Exception ignored) {}
+        if (curStamp != null && !curStamp.isBlank()) {
+            try {
+                stampPreview.setImage(new Image(new java.io.File(curStamp).toURI().toString()));
+            } catch (RuntimeException ex) {
+                UIUtils.showError("Failed to load stamp preview: " + ex.getMessage());
+            }
+        }
         TextField stampPathField = new TextField(curStamp);
         stampPathField.setPrefWidth(300);
         stampPathField.setEditable(false);
