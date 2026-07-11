@@ -233,9 +233,11 @@ public class ReportCardGenerator {
             SELECT sub.subject_name, m.score, m.grade_achieved, m.points_achieved,
                    (SELECT COUNT(DISTINCT m2.student_id) + 1 FROM marks m2
                     WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id
+                      AND (m2.status IS NULL OR m2.status = 'P')
                       AND m2.score > m.score) AS position,
                    (SELECT COUNT(DISTINCT m2.student_id) FROM marks m2
-                    WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id) AS total_students,
+                    WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id
+                      AND (m2.status IS NULL OR m2.status = 'P')) AS total_students,
                    COALESCE(gs.remarks, '') AS remarks,
                    COALESCE(m.deviation, 0.0) AS deviation,
                    COALESCE(m.teacher_comment, '') AS teacher_comment,
@@ -244,7 +246,7 @@ public class ReportCardGenerator {
             JOIN subjects sub ON sub.id = m.subject_id
             LEFT JOIN grading_scales gs ON (gs.subject_id IS NULL OR gs.subject_id = m.subject_id)
                 AND m.score BETWEEN gs.minimum_mark AND gs.maximum_mark
-            WHERE m.exam_id = ? AND m.student_id = ?
+            WHERE m.exam_id = ? AND m.student_id = ? AND (m.status IS NULL OR m.status = 'P')
             GROUP BY m.subject_id
             ORDER BY sub.subject_name
             """;
@@ -302,7 +304,7 @@ public class ReportCardGenerator {
                 ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points,
                 COUNT(m.subject_id) AS subject_count
             FROM marks m
-            WHERE m.exam_id = ? AND m.student_id = ?
+            WHERE m.exam_id = ? AND m.student_id = ? AND (m.status IS NULL OR m.status = 'P')
             """;
         try (Connection conn = db.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -356,7 +358,7 @@ public class ReportCardGenerator {
                    COALESCE(SUM(m.points_achieved), 0) AS total_points
             FROM marks m
             JOIN exams e ON e.id = m.exam_id
-            WHERE m.student_id = ?
+            WHERE m.student_id = ? AND (m.status IS NULL OR m.status = 'P')
             GROUP BY e.id, e.academic_year, e.term, e.exam_series
             ORDER BY e.id
             """;
@@ -782,7 +784,8 @@ public class ReportCardGenerator {
     private void addPerformanceIndicator(Document doc, long examId, long studentId) throws DocumentException {
         String sql = """
             SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points
-            FROM marks m WHERE m.exam_id = ? AND m.student_id = ?
+            FROM marks m
+            WHERE m.exam_id = ? AND m.student_id = ? AND (m.status IS NULL OR m.status = 'P')
             """;
         String prevSql = """
             SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points
@@ -791,6 +794,7 @@ public class ReportCardGenerator {
             WHERE m.student_id = ?
               AND e.academic_year = (SELECT academic_year FROM exams WHERE id = ?)
               AND e.id < ?
+              AND (m.status IS NULL OR m.status = 'P')
             ORDER BY e.id DESC LIMIT 1
             """;
         try (Connection conn = db.getConnection();

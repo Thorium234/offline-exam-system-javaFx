@@ -1,0 +1,1 @@
+add another feature called analyse having grading systems for all subjects like when we click analyse and click kcse this grading system name will have all subjects grades based on perfomance meaning that our system will adapt to use that grading system and it will use that 2. even rankingshould have crud we should be able to adjust them ensure nothing is hardcoded

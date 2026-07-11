@@ -312,12 +312,14 @@ public class ReportForm {
         String marksSql = """
             SELECT sub.subject_name, m.score, m.grade_achieved, m.points_achieved,
                 (SELECT COUNT(DISTINCT m2.student_id) + 1 FROM marks m2
-                 WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id AND m2.score > m.score) AS pos,
+                 WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id
+                   AND (m2.status IS NULL OR m2.status = 'P') AND m2.score > m.score) AS pos,
                 (SELECT COUNT(DISTINCT m2.student_id) FROM marks m2
-                 WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id) AS total_students
+                 WHERE m2.exam_id = m.exam_id AND m2.subject_id = m.subject_id
+                   AND (m2.status IS NULL OR m2.status = 'P')) AS total_students
             FROM marks m
             JOIN subjects sub ON sub.id = m.subject_id
-            WHERE m.exam_id = ? AND m.student_id = ?
+            WHERE m.exam_id = ? AND m.student_id = ? AND (m.status IS NULL OR m.status = 'P')
             ORDER BY sub.subject_name
             """;
         try (Connection conn = db.getConnection();
@@ -354,7 +356,7 @@ public class ReportForm {
         sumHeader.setTextFill(Color.web(PRIMARY));
         summary.getChildren().add(sumHeader);
 
-        String sumSql = "SELECT ROUND(SUM(m.score), 1) AS total_marks, COALESCE(SUM(m.points_achieved), 0) AS total_points, ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points FROM marks m WHERE m.exam_id = ? AND m.student_id = ?";
+        String sumSql = "SELECT ROUND(SUM(m.score), 1) AS total_marks, COALESCE(SUM(m.points_achieved), 0) AS total_points, ROUND(COALESCE(AVG(m.points_achieved), 0), 1) AS mean_points FROM marks m WHERE m.exam_id = ? AND m.student_id = ? AND (m.status IS NULL OR m.status = 'P')";
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(sumSql)) {
             ps.setLong(1, examId); ps.setLong(2, studentId);
             ResultSet rs = ps.executeQuery();
@@ -362,8 +364,8 @@ public class ReportForm {
                 summary.getChildren().add(new Label("Total Marks: " + rs.getDouble("total_marks") + " | Total Points: " + rs.getInt("total_points") + " | Mean Points: " + rs.getDouble("mean_points")));
         } catch (SQLException e) { UIUtils.showError(e.getMessage()); }
 
-        String trendSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m WHERE m.exam_id = ? AND m.student_id = ?";
-        String prevSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m JOIN exams e ON e.id = m.exam_id WHERE m.student_id = ? AND e.academic_year = (SELECT academic_year FROM exams WHERE id = ?) AND e.id < ? ORDER BY e.id DESC LIMIT 1";
+        String trendSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m WHERE m.exam_id = ? AND m.student_id = ? AND (m.status IS NULL OR m.status = 'P')";
+        String prevSql = "SELECT COALESCE(SUM(m.points_achieved), 0) AS total_points FROM marks m JOIN exams e ON e.id = m.exam_id WHERE m.student_id = ? AND e.academic_year = (SELECT academic_year FROM exams WHERE id = ?) AND e.id < ? AND (m.status IS NULL OR m.status = 'P') ORDER BY e.id DESC LIMIT 1";
         try (Connection conn = db.getConnection(); PreparedStatement ps = conn.prepareStatement(trendSql); PreparedStatement pps = conn.prepareStatement(prevSql)) {
             ps.setLong(1, examId); ps.setLong(2, studentId);
             ResultSet cr = ps.executeQuery();

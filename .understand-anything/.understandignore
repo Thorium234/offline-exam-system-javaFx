@@ -1,0 +1,49 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions — uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+# --- From .gitignore (uncomment to exclude) ---
+
+# instraction.md
+# instruction.md
+# *.jar
+# *.war
+# *.nar
+# *.ear
+# pom.xml.tag
+# pom.xml.releaseBackup
+# pom.xml.versionsBackup
+# pom.xml.next
+# release.properties
+# *.iml
+# *.iws
+# *.ipr
+# .settings/
+# .project
+# .classpath
+# *.class
+# nbproject/
+# .DS_Store
+# Thumbs.db
+# *.db
+# *.db-shm
+# *.db-wal
+# *.log.lck
+# REPORT.MD
+# dependency-reduced-pom.xml
+# school_logo.*
+# school_stamp.*
+# .*.~lock.*
+# *.~lock.*
+# *.xlsx
+# *.xls
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# *.test.*
+# *.spec.*
+# *.snap

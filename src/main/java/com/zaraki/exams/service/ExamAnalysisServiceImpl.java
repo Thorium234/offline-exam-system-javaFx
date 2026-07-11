@@ -55,15 +55,12 @@ public class ExamAnalysisServiceImpl implements IExamAnalysisService {
         GradingSystem activeSystem = gradingSystemRepo.findActive();
         if (activeSystem != null) {
             List<GradingSystemEntry> entries = gradingSystemRepo.findEntriesBySystem(activeSystem.getId());
-            String bestGrade = "E";
             for (GradingSystemEntry e : entries) {
                 if (e.getSubjectId() == null && e.getPoints() <= meanPoints && e.getPoints() > 0) {
-                    if (bestGrade.equals("E") || e.getPoints() > 0) {
-                        bestGrade = e.getGrade();
-                    }
+                    return e.getGrade();
                 }
             }
-            return bestGrade;
+            return "E";
         }
         return null; // signal to use legacy
     }

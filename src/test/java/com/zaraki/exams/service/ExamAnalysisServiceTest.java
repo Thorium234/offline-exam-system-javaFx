@@ -1,6 +1,10 @@
 package com.zaraki.exams.service;
 
 import com.zaraki.exams.DatabaseTestBase;
+import com.zaraki.exams.model.GradingSystem;
+import com.zaraki.exams.model.GradingSystemEntry;
+import com.zaraki.exams.repository.GradingSystemRepositoryImpl;
+import com.zaraki.exams.repository.IGradingSystemRepository;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -376,6 +380,18 @@ class ExamAnalysisServiceTest extends DatabaseTestBase {
         assertEquals("A", service.meanPointsToGrade(20));
         assertEquals("B", service.meanPointsToGrade(15));
         assertEquals("E", service.meanPointsToGrade(0));
+    }
+
+    @Test
+    void meanPointsToGrade_withActiveSystemReturnsHighestMatchingGrade() {
+        IGradingSystemRepository repo = new GradingSystemRepositoryImpl();
+        long systemId = repo.insertSystem(new GradingSystem("Active Custom", "", true));
+        repo.insertEntry(new GradingSystemEntry(systemId, null, 0, 5, "C", 6, "Low"));
+        repo.insertEntry(new GradingSystemEntry(systemId, null, 6, 10, "B", 10, "Good"));
+        repo.insertEntry(new GradingSystemEntry(systemId, null, 11, 12, "A", 12, "Excellent"));
+
+        assertEquals("B", service.meanPointsToGrade(10));
+        assertEquals("A", service.meanPointsToGrade(12));
     }
 
     @Test
